@@ -1,0 +1,20 @@
+# Build and runtime
+/tmp
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Environment
+.env
+.env.dev
+
+# Runtime logs
+src/logs/*.log
+
+# Vendor files
+vendor/
+
+# IDE
+.vscode/
+.agent
