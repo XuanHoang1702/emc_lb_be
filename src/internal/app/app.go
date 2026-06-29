@@ -8,6 +8,7 @@ import (
 
 	"emc_lb/src/internal/app/module"
 	"emc_lb/src/internal/db/sqlc"
+	"emc_lb/src/internal/handler"
 	"emc_lb/src/internal/middleware"
 	route "emc_lb/src/internal/routes"
 	"emc_lb/src/pkg/cache"
@@ -95,12 +96,15 @@ func New() (*App, error) {
 		_ = redisClient.Close()
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
+	ecommerceHandler := handler.NewEcommerceHandler()
+	ecommerceRoute := route.NewEcommerceRoute(ecommerceHandler)
 	route.RegisterRoutes(router, route.RouteGroups{
 		Public: []route.Route{
 			userModule.Routes(),
 			productModule.Routes(),
 			categoryModule.Routes(),
 			brandModule.Routes(),
+			ecommerceRoute,
 		},
 	})
 
