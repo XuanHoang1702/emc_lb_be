@@ -162,7 +162,7 @@ func (r *brandRepository) EnsureIndexes(ctx context.Context) error {
 				SetUnique(true).
 				SetPartialFilterExpression(bson.M{
 					"is_deleted": false,
-					"email":      bson.M{"$type": "string", "$ne": ""},
+					"email":      bson.M{"$type": "string", "$gt": ""},
 				}),
 		},
 		{

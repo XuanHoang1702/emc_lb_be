@@ -102,12 +102,15 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
 
+	paymentModule := module.NewPaymentModule()
+
 	route.RegisterRoutes(router, route.RouteGroups{
 		Public: []route.Route{
 			userModule.Routes(),
 			productModule.Routes(),
 			categoryModule.Routes(),
 			brandModule.Routes(),
+			paymentModule.Routes(),
 		},
 	})
 
