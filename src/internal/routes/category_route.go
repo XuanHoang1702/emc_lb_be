@@ -2,6 +2,7 @@ package route
 
 import (
 	"emc_lb/src/internal/handler"
+	"emc_lb/src/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,10 +18,10 @@ func NewCategoryRoute(categoryHandler *handler.CategoryHandler) *CategoryRoute {
 func (r *CategoryRoute) Register(router gin.IRouter) {
 	categoryRoute := router.Group("/categories")
 	{
-		categoryRoute.POST("", r.categoryHandler.HandleCreate)
+		categoryRoute.POST("", middleware.AccessTokenMiddleware(), middleware.RequirePermission("category:create"), r.categoryHandler.HandleCreate)
 		categoryRoute.GET("", r.categoryHandler.HandleList)
 		categoryRoute.GET("/:id", r.categoryHandler.HandleGetByID)
-		categoryRoute.PATCH("/:id", r.categoryHandler.HandleUpdate)
-		categoryRoute.DELETE("/:id", r.categoryHandler.HandleDelete)
+		categoryRoute.PATCH("/:id", middleware.AccessTokenMiddleware(), middleware.RequirePermission("category:update"), r.categoryHandler.HandleUpdate)
+		categoryRoute.DELETE("/:id", middleware.AccessTokenMiddleware(), middleware.RequirePermission("category:delete"), r.categoryHandler.HandleDelete)
 	}
 }

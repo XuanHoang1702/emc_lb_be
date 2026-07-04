@@ -11,6 +11,7 @@ import (
 
 type UserRepository interface {
 	GetByEmail(context.Context, string) (entities.User, error)
+	GetByID(context.Context, uuid.UUID) (entities.User, error)
 	GetIDByID(context.Context, uuid.UUID) (uuid.UUID, error)
 	Create(context.Context, entities.User) (entities.User, error)
 	VerifyEmail(context.Context, string) error
@@ -36,6 +37,21 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (entities
 		Email:         row.Email,
 		PasswordHash:  row.PasswordHash,
 		EmailVerified: row.EmailVerified,
+		Role:          row.Role,
+	}, nil
+}
+
+func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (entities.User, error) {
+	row, err := r.db.GetUserByID(ctx, id)
+	if err != nil {
+		return entities.User{}, err
+	}
+	return entities.User{
+		ID:            row.ID,
+		Email:         row.Email,
+		PasswordHash:  row.PasswordHash,
+		EmailVerified: row.EmailVerified,
+		Role:          row.Role,
 	}, nil
 }
 

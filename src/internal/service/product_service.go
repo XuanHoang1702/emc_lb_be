@@ -10,6 +10,7 @@ import (
 	"emc_lb/src/internal/repository"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
+	"emc_lb/src/pkg/mapping"
 	"emc_lb/src/pkg/res"
 	"emc_lb/src/pkg/utils"
 )
@@ -77,7 +78,7 @@ func (s *productService) Create(ctx context.Context, req entities.CreateProductR
 		return entities.ProductResponse{}, res.WrapError(err, "Can not create product now", erres.CommonInternal)
 	}
 
-	return repository.ToProductResponse(product), nil
+	return mapping.ToProductResponse(product), nil
 }
 
 func (s *productService) List(ctx context.Context) ([]entities.ProductResponse, error) {
@@ -88,7 +89,7 @@ func (s *productService) List(ctx context.Context) ([]entities.ProductResponse, 
 
 	responses := make([]entities.ProductResponse, 0, len(products))
 	for _, product := range products {
-		responses = append(responses, repository.ToProductResponse(product))
+		responses = append(responses, mapping.ToProductResponse(product))
 	}
 
 	return responses, nil

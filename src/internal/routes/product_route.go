@@ -2,6 +2,7 @@ package route
 
 import (
 	"emc_lb/src/internal/handler"
+	"emc_lb/src/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,7 +18,7 @@ func NewProductRoute(productHandler *handler.ProductHandler) *ProductRoute {
 func (r *ProductRoute) Register(router gin.IRouter) {
 	productRoute := router.Group("/products")
 	{
-		productRoute.POST("", r.productHandler.HandleCreate)
+		productRoute.POST("", middleware.AccessTokenMiddleware(), middleware.RequirePermission("product:create"), r.productHandler.HandleCreate)
 		productRoute.GET("", r.productHandler.HandleList)
 	}
 }

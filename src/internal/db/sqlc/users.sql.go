@@ -77,7 +77,8 @@ SELECT
     id,
     email,
     password_hash,
-    email_verified
+    email_verified,
+    role
 FROM users
 WHERE email = $1 AND is_deleted = false
 LIMIT 1
@@ -88,6 +89,7 @@ type GetUserByEmailRow struct {
 	Email         string    `json:"email"`
 	PasswordHash  string    `json:"password_hash"`
 	EmailVerified bool      `json:"email_verified"`
+	Role          string    `json:"role"`
 }
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error) {
@@ -98,6 +100,40 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.Email,
 		&i.PasswordHash,
 		&i.EmailVerified,
+		&i.Role,
+	)
+	return i, err
+}
+
+const getUserByID = `-- name: GetUserByID :one
+SELECT
+    id,
+    email,
+    password_hash,
+    email_verified,
+    role
+FROM users
+WHERE id = $1 AND is_deleted = false
+LIMIT 1
+`
+
+type GetUserByIDRow struct {
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	PasswordHash  string    `json:"password_hash"`
+	EmailVerified bool      `json:"email_verified"`
+	Role          string    `json:"role"`
+}
+
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error) {
+	row := q.db.QueryRow(ctx, getUserByID, id)
+	var i GetUserByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.EmailVerified,
+		&i.Role,
 	)
 	return i, err
 }

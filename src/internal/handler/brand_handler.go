@@ -96,5 +96,5 @@ func (h *BrandHandler) HandleDelete(ctx *gin.Context) {
 		return
 	}
 
-	res.Success(ctx, http.StatusOK, "brand deleted successfully")
+	res.Success(ctx, http.StatusOK, "success_brand_deleted")
 }

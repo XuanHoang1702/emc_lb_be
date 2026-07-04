@@ -32,79 +32,6 @@ func NewCategoryRepository(collection *mongo.Collection) CategoryRepository {
 	return &categoryRepository{collection: collection}
 }
 
-type categoryDoc struct {
-	ID bson.ObjectID `bson:"_id,omitempty"`
-	Name        string `bson:"name"`
-	Slug        string `bson:"slug"`
-	Description string `bson:"description,omitempty"`
-	ParentID *bson.ObjectID `bson:"parent_id,omitempty"`
-	Thumbnail string `bson:"thumbnail,omitempty"`
-	Banner    string `bson:"banner,omitempty"`
-	MetaTitle       string `bson:"meta_title,omitempty"`
-	MetaDescription string `bson:"meta_description,omitempty"`
-	Position   int64 `bson:"position"`
-	IsFeatured bool  `bson:"is_featured"`
-	Status    string `bson:"status"`
-	IsDeleted bool   `bson:"is_deleted"`
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
-	DeletedAt time.Time `bson:"deleted_at"`
-}
-
-func toCategoryDoc(c entities.Category) categoryDoc {
-	doc := categoryDoc{
-		Name: c.Name,
-		Slug: c.Slug,
-		Description: c.Description,
-		Thumbnail: c.Thumbnail,
-		Banner: c.Banner,
-		MetaTitle: c.MetaTitle,
-		MetaDescription: c.MetaDescription,
-		Position: c.Position,
-		IsFeatured: c.IsFeatured,
-		Status: c.Status,
-		IsDeleted: c.IsDeleted,
-		CreatedAt: c.CreatedAt,
-		UpdatedAt: c.UpdatedAt,
-		DeletedAt: c.DeletedAt,
-	}
-	if c.ID != "" {
-		if id, err := bson.ObjectIDFromHex(c.ID); err == nil {
-			doc.ID = id
-		}
-	}
-	if c.ParentID != nil && *c.ParentID != "" {
-		if id, err := bson.ObjectIDFromHex(*c.ParentID); err == nil {
-			doc.ParentID = &id
-		}
-	}
-	return doc
-}
-
-func toCategoryEntity(doc categoryDoc) entities.Category {
-	c := entities.Category{
-		ID: doc.ID.Hex(),
-		Name: doc.Name,
-		Slug: doc.Slug,
-		Description: doc.Description,
-		Thumbnail: doc.Thumbnail,
-		Banner: doc.Banner,
-		MetaTitle: doc.MetaTitle,
-		MetaDescription: doc.MetaDescription,
-		Position: doc.Position,
-		IsFeatured: doc.IsFeatured,
-		Status: doc.Status,
-		IsDeleted: doc.IsDeleted,
-		CreatedAt: doc.CreatedAt,
-		UpdatedAt: doc.UpdatedAt,
-		DeletedAt: doc.DeletedAt,
-	}
-	if doc.ParentID != nil && !doc.ParentID.IsZero() {
-		pid := doc.ParentID.Hex()
-		c.ParentID = &pid
-	}
-	return c
-}
 
 func (r *categoryRepository) Create(ctx context.Context, category entities.Category) (entities.Category, error) {
 	doc := toCategoryDoc(category)
@@ -205,36 +132,6 @@ func (r *categoryRepository) Delete(ctx context.Context, id string, update map[s
 	return nil
 }
 
-func (r *categoryRepository) ExistsByID(ctx context.Context, id string) (bool, error) {
-	objID, err := bson.ObjectIDFromHex(id)
-	if err != nil {
-		return false, err
-	}
-	err = r.collection.FindOne(ctx, bson.M{
-		"_id":        objID,
-		"is_deleted": false,
-	}).Err()
-	if err == mongo.ErrNoDocuments {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
-
-func (r *categoryRepository) ExistsByName(ctx context.Context, name string, excludeID *string) (bool, error) {
-	return r.existsByField(ctx, "name", name, excludeID)
-}
-
-func (r *categoryRepository) ExistsBySlug(ctx context.Context, slug string, excludeID *string) (bool, error) {
-	return r.existsByField(ctx, "slug", slug, excludeID)
-}
-
-func (r *categoryRepository) ExistsByPosition(ctx context.Context, position int64, excludeID *string) (bool, error) {
-	return r.existsByField(ctx, "position", position, excludeID)
-}
 
 func (r *categoryRepository) EnsureIndexes(ctx context.Context) error {
 	models := []mongo.IndexModel{
@@ -279,6 +176,119 @@ func (r *categoryRepository) EnsureIndexes(ctx context.Context) error {
 	return err
 }
 
+// ============================================================================
+// Database Models & Mappers
+// ============================================================================
+
+type categoryDoc struct {
+	ID bson.ObjectID `bson:"_id,omitempty"`
+	Name        string `bson:"name"`
+	Slug        string `bson:"slug"`
+	Description string `bson:"description,omitempty"`
+	ParentID *bson.ObjectID `bson:"parent_id,omitempty"`
+	Thumbnail string `bson:"thumbnail,omitempty"`
+	Banner    string `bson:"banner,omitempty"`
+	MetaTitle       string `bson:"meta_title,omitempty"`
+	MetaDescription string `bson:"meta_description,omitempty"`
+	Position   int64 `bson:"position"`
+	IsFeatured bool  `bson:"is_featured"`
+	Status    string `bson:"status"`
+	IsDeleted bool   `bson:"is_deleted"`
+	CreatedAt time.Time `bson:"created_at"`
+	UpdatedAt time.Time `bson:"updated_at"`
+	DeletedAt time.Time `bson:"deleted_at"`
+}
+
+func toCategoryDoc(c entities.Category) categoryDoc {
+	doc := categoryDoc{
+		Name: c.Name,
+		Slug: c.Slug,
+		Description: c.Description,
+		Thumbnail: c.Thumbnail,
+		Banner: c.Banner,
+		MetaTitle: c.MetaTitle,
+		MetaDescription: c.MetaDescription,
+		Position: c.Position,
+		IsFeatured: c.IsFeatured,
+		Status: c.Status,
+		IsDeleted: c.IsDeleted,
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
+		DeletedAt: c.DeletedAt,
+	}
+	if c.ID != "" {
+		if id, err := bson.ObjectIDFromHex(c.ID); err == nil {
+			doc.ID = id
+		}
+	}
+	if c.ParentID != nil && *c.ParentID != "" {
+		if id, err := bson.ObjectIDFromHex(*c.ParentID); err == nil {
+			doc.ParentID = &id
+		}
+	}
+	return doc
+}
+
+func toCategoryEntity(doc categoryDoc) entities.Category {
+	c := entities.Category{
+		ID: doc.ID.Hex(),
+		Name: doc.Name,
+		Slug: doc.Slug,
+		Description: doc.Description,
+		Thumbnail: doc.Thumbnail,
+		Banner: doc.Banner,
+		MetaTitle: doc.MetaTitle,
+		MetaDescription: doc.MetaDescription,
+		Position: doc.Position,
+		IsFeatured: doc.IsFeatured,
+		Status: doc.Status,
+		IsDeleted: doc.IsDeleted,
+		CreatedAt: doc.CreatedAt,
+		UpdatedAt: doc.UpdatedAt,
+		DeletedAt: doc.DeletedAt,
+	}
+	if doc.ParentID != nil && !doc.ParentID.IsZero() {
+		pid := doc.ParentID.Hex()
+		c.ParentID = &pid
+	}
+	return c
+}
+
+// ============================================================================
+// Existence Checks
+// ============================================================================
+
+func (r *categoryRepository) ExistsByID(ctx context.Context, id string) (bool, error) {
+	objID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return false, err
+	}
+	err = r.collection.FindOne(ctx, bson.M{
+		"_id":        objID,
+		"is_deleted": false,
+	}).Err()
+	if err == mongo.ErrNoDocuments {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (r *categoryRepository) ExistsByName(ctx context.Context, name string, excludeID *string) (bool, error) {
+	return r.existsByField(ctx, "name", name, excludeID)
+}
+
+func (r *categoryRepository) ExistsBySlug(ctx context.Context, slug string, excludeID *string) (bool, error) {
+	return r.existsByField(ctx, "slug", slug, excludeID)
+}
+
+func (r *categoryRepository) ExistsByPosition(ctx context.Context, position int64, excludeID *string) (bool, error) {
+	return r.existsByField(ctx, "position", position, excludeID)
+}
+
 func (r *categoryRepository) existsByField(ctx context.Context, field string, value any, excludeID *string) (bool, error) {
 	filter := bson.M{
 		field:        value,
@@ -301,21 +311,3 @@ func (r *categoryRepository) existsByField(ctx context.Context, field string, va
 	return true, nil
 }
 
-func ToCategoryResponse(category entities.Category) entities.CategoryResponse {
-	return entities.CategoryResponse{
-		ID:              category.ID,
-		Name:            category.Name,
-		Slug:            category.Slug,
-		Description:     category.Description,
-		ParentID:        category.ParentID,
-		Thumbnail:       category.Thumbnail,
-		Banner:          category.Banner,
-		MetaTitle:       category.MetaTitle,
-		MetaDescription: category.MetaDescription,
-		Position:        category.Position,
-		IsFeatured:      category.IsFeatured,
-		Status:          category.Status,
-		CreatedAt:       category.CreatedAt,
-		UpdatedAt:       category.UpdatedAt,
-	}
-}

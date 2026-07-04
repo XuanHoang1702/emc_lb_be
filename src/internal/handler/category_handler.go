@@ -96,5 +96,5 @@ func (h *CategoryHandler) HandleDelete(ctx *gin.Context) {
 		return
 	}
 
-	res.Success(ctx, http.StatusOK, "category deleted successfully")
+	res.Success(ctx, http.StatusOK, "success_category_deleted")
 }

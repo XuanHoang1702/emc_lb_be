@@ -9,6 +9,7 @@ import (
 	"emc_lb/src/internal/repository"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
+	"emc_lb/src/pkg/mapping"
 	"emc_lb/src/pkg/res"
 	"emc_lb/src/pkg/utils"
 
@@ -87,7 +88,7 @@ func (s *categoryService) Create(ctx context.Context, req entities.CreateCategor
 		return entities.CategoryResponse{}, res.WrapError(err, "Can not create category now", erres.CommonInternal)
 	}
 
-	return repository.ToCategoryResponse(category), nil
+	return mapping.ToCategoryResponse(category), nil
 }
 
 func (s *categoryService) List(ctx context.Context) ([]entities.CategoryResponse, error) {
@@ -98,7 +99,7 @@ func (s *categoryService) List(ctx context.Context) ([]entities.CategoryResponse
 
 	responses := make([]entities.CategoryResponse, 0, len(categories))
 	for _, category := range categories {
-		responses = append(responses, repository.ToCategoryResponse(category))
+		responses = append(responses, mapping.ToCategoryResponse(category))
 	}
 
 	return responses, nil
@@ -117,7 +118,7 @@ func (s *categoryService) GetByID(ctx context.Context, id string) (entities.Cate
 		return entities.CategoryResponse{}, res.WrapError(err, "Can not get category now", erres.CommonInternal)
 	}
 
-	return repository.ToCategoryResponse(category), nil
+	return mapping.ToCategoryResponse(category), nil
 }
 
 func (s *categoryService) Update(ctx context.Context, id string, req entities.UpdateCategoryRequest) (entities.CategoryResponse, error) {
@@ -205,7 +206,7 @@ func (s *categoryService) Update(ctx context.Context, id string, req entities.Up
 		return entities.CategoryResponse{}, res.WrapError(err, "Can not update category now", erres.CommonInternal)
 	}
 
-	return repository.ToCategoryResponse(category), nil
+	return mapping.ToCategoryResponse(category), nil
 }
 
 func (s *categoryService) Delete(ctx context.Context, id string) error {

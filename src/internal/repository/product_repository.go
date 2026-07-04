@@ -24,6 +24,50 @@ func NewProductRepository(collection *mongo.Collection) ProductRepository {
 	return &productRepository{collection: collection}
 }
 
+func (r *productRepository) Create(ctx context.Context, product entities.Product) (entities.Product, error) {
+	doc := toProductDoc(product)
+	result, err := r.collection.InsertOne(ctx, doc)
+	if err != nil {
+		return entities.Product{}, err
+	}
+
+	id, ok := result.InsertedID.(bson.ObjectID)
+	if ok {
+		doc.ID = id
+	}
+
+	return toProductEntity(doc), nil
+}
+
+func (r *productRepository) List(ctx context.Context) ([]entities.Product, error) {
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+	cursor, err := r.collection.Find(ctx, bson.D{}, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	products := make([]entities.Product, 0)
+	for cursor.Next(ctx) {
+		var doc productDoc
+		if err := cursor.Decode(&doc); err != nil {
+			return nil, err
+		}
+		products = append(products, toProductEntity(doc))
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+
+	return products, nil
+}
+
+// ============================================================================
+// Database Models & Mappers
+// ============================================================================
+
 type productDoc struct {
 	ID bson.ObjectID `bson:"_id,omitempty"`
 	Name        string `bson:"name"`
@@ -154,65 +198,5 @@ func toProductEntity(doc productDoc) entities.Product {
 	}
 }
 
-func (r *productRepository) Create(ctx context.Context, product entities.Product) (entities.Product, error) {
-	doc := toProductDoc(product)
-	result, err := r.collection.InsertOne(ctx, doc)
-	if err != nil {
-		return entities.Product{}, err
-	}
 
-	id, ok := result.InsertedID.(bson.ObjectID)
-	if ok {
-		doc.ID = id
-	}
 
-	return toProductEntity(doc), nil
-}
-
-func (r *productRepository) List(ctx context.Context) ([]entities.Product, error) {
-	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
-
-	cursor, err := r.collection.Find(ctx, bson.D{}, opts)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	products := make([]entities.Product, 0)
-	for cursor.Next(ctx) {
-		var doc productDoc
-		if err := cursor.Decode(&doc); err != nil {
-			return nil, err
-		}
-		products = append(products, toProductEntity(doc))
-	}
-
-	if err := cursor.Err(); err != nil {
-		return nil, err
-	}
-
-	return products, nil
-}
-
-func ToProductResponse(product entities.Product) entities.ProductResponse {
-	return entities.ProductResponse{
-		ID:             product.ID,
-		Name:           product.Name,
-		Slug:           product.Slug,
-		Description:    product.Description,
-		ShortDesc:      product.ShortDesc,
-		Price:          product.Price,
-		OriginalPrice:  product.OriginalPrice,
-		SKU:            product.SKU,
-		Stock:          product.Stock,
-		SoldCount:      product.SoldCount,
-		AllowBackorder: product.AllowBackorder,
-		Thumbnail:      product.Thumbnail,
-		Images:         product.Images,
-		Tags:           product.Tags,
-		Status:         product.Status,
-		IsFeatured:     product.IsFeatured,
-		CreatedAt:      product.CreatedAt,
-		UpdatedAt:      product.UpdatedAt,
-	}
-}

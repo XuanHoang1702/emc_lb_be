@@ -136,7 +136,7 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 		}
 	}
 
-	tokenPair, err := utils.GenerateTokenPair(user.ID.String())
+	tokenPair, err := utils.GenerateTokenPair(user.ID.String(), user.Role)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not login now", erres.CommonInternal)
 	}
@@ -171,7 +171,17 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 		}
 	}
 
-	tokenPair, err := utils.GenerateTokenPair(userID)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return entities.LoginUserResponse{}, res.WrapError(err, "Invalid user ID in refresh token", erres.CommonInternal)
+	}
+
+	user, err := s.userRepository.GetByID(ctx, uid)
+	if err != nil {
+		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
+	}
+
+	tokenPair, err := utils.GenerateTokenPair(userID, user.Role)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
 	}

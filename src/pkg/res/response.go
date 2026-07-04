@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"emc_lb/src/pkg/i18n"
 	"github.com/gin-gonic/gin"
 )
 
@@ -68,7 +69,9 @@ func Success(ctx *gin.Context, status int, args ...any) {
 	var payload any
 	if len(args) > 0 {
 		if msg, ok := args[0].(string); ok {
-			resp.Message = capitalizeFirst(msg)
+			lang := ctx.GetHeader("Accept-Language")
+			translatedMsg := i18n.GetMessage(lang, msg)
+			resp.Message = capitalizeFirst(translatedMsg)
 			if len(args) > 1 {
 				payload = args[1]
 			}
@@ -96,6 +99,7 @@ func Success(ctx *gin.Context, status int, args ...any) {
 }
 
 func Error(ctx *gin.Context, err error) {
+	lang := ctx.GetHeader("Accept-Language")
 	if appErr, ok := err.(*AppError); ok {
 		status := appErr.StatusCode
 		if status == 0 {
@@ -103,7 +107,7 @@ func Error(ctx *gin.Context, err error) {
 		}
 		ctx.JSON(status, APIResponse{
 			Success: false,
-			Message: capitalizeFirst(appErr.Message),
+			Message: capitalizeFirst(i18n.GetMessage(lang, appErr.Message)),
 			Code:    appErr.Code,
 			Status:  status,
 			Errors:  appErr.Errors,
@@ -112,7 +116,7 @@ func Error(ctx *gin.Context, err error) {
 	}
 	ctx.JSON(http.StatusInternalServerError, APIResponse{
 		Success: false,
-		Message: "Internal server error",
+		Message: i18n.GetMessage(lang, "err_internal_server"),
 		Code:    ErrCodeInternal,
 		Status:  http.StatusInternalServerError,
 	})

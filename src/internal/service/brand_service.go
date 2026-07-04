@@ -9,6 +9,7 @@ import (
 	"emc_lb/src/internal/repository"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
+	"emc_lb/src/pkg/mapping"
 	"emc_lb/src/pkg/res"
 	"emc_lb/src/pkg/utils"
 
@@ -80,7 +81,7 @@ func (s *brandService) Create(ctx context.Context, req entities.CreateBrandReque
 		return entities.BrandResponse{}, res.WrapError(err, "Can not create brand now", erres.BrandCreateFailed)
 	}
 
-	return repository.ToBrandResponse(brand), nil
+	return mapping.ToBrandResponse(brand), nil
 }
 
 func (s *brandService) List(ctx context.Context) ([]entities.BrandResponse, error) {
@@ -91,7 +92,7 @@ func (s *brandService) List(ctx context.Context) ([]entities.BrandResponse, erro
 
 	responses := make([]entities.BrandResponse, 0, len(brands))
 	for _, brand := range brands {
-		responses = append(responses, repository.ToBrandResponse(brand))
+		responses = append(responses, mapping.ToBrandResponse(brand))
 	}
 
 	return responses, nil
@@ -110,7 +111,7 @@ func (s *brandService) GetByID(ctx context.Context, id string) (entities.BrandRe
 		return entities.BrandResponse{}, res.WrapError(err, "Can not get brand now", erres.BrandGetFailed)
 	}
 
-	return repository.ToBrandResponse(brand), nil
+	return mapping.ToBrandResponse(brand), nil
 }
 
 func (s *brandService) Update(ctx context.Context, id string, req entities.UpdateBrandRequest) (entities.BrandResponse, error) {
@@ -221,7 +222,7 @@ func (s *brandService) Update(ctx context.Context, id string, req entities.Updat
 		return entities.BrandResponse{}, res.WrapError(err, "Can not update brand now", erres.BrandUpdateFailed)
 	}
 
-	return repository.ToBrandResponse(brand), nil
+	return mapping.ToBrandResponse(brand), nil
 }
 
 func (s *brandService) Delete(ctx context.Context, id string) error {

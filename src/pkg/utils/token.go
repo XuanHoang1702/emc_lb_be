@@ -15,6 +15,7 @@ import (
 
 type accessTokenClaims struct {
 	UserID string `json:"user_id"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -25,8 +26,8 @@ type TokenPair struct {
 	RefreshTokenExpiresAt time.Time
 }
 
-func GenerateTokenPair(userID string) (TokenPair, error) {
-	accessToken, accessExpiresAt, err := GenerateAccessToken(userID)
+func GenerateTokenPair(userID string, role string) (TokenPair, error) {
+	accessToken, accessExpiresAt, err := GenerateAccessToken(userID, role)
 	if err != nil {
 		return TokenPair{}, err
 	}
@@ -44,13 +45,13 @@ func GenerateTokenPair(userID string) (TokenPair, error) {
 	}, nil
 }
 
-func GenerateAccessToken(userID string) (string, time.Time, error) {
+func GenerateAccessToken(userID string, role string) (string, time.Time, error) {
 	ttl := GetDurationFromEnv("ACCESS_TOKEN_TTL", 15*time.Minute)
 	now := time.Now()
-	return generateAccessJWT(userID, now, ttl, buildTokenSecret(GetEnv("ACCESS_TOKEN_SECRET", "access-secret")))
+	return generateAccessJWT(userID, role, now, ttl, buildTokenSecret(GetEnv("ACCESS_TOKEN_SECRET", "access-secret")))
 }
 
-func ParseAccessToken(accessToken string) (string, error) {
+func ParseAccessToken(accessToken string) (string, string, error) {
 	parsedToken, err := jwt.ParseWithClaims(accessToken, &accessTokenClaims{}, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {
 			return nil, errors.New("invalid signing method")
@@ -59,15 +60,15 @@ func ParseAccessToken(accessToken string) (string, error) {
 		return buildTokenSecret(GetEnv("ACCESS_TOKEN_SECRET", "access-secret")), nil
 	})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	claims, ok := parsedToken.Claims.(*accessTokenClaims)
 	if !ok || !parsedToken.Valid || claims.UserID == "" {
-		return "", errors.New("invalid access token")
+		return "", "", errors.New("invalid access token")
 	}
 
-	return claims.UserID, nil
+	return claims.UserID, claims.Role, nil
 }
 
 func GenerateRefreshToken() (string, time.Time, error) {
@@ -85,10 +86,11 @@ func GenerateRefreshToken() (string, time.Time, error) {
 	return refreshToken, expiresAt, nil
 }
 
-func generateAccessJWT(userID string, issuedAt time.Time, ttl time.Duration, secret []byte) (string, time.Time, error) {
+func generateAccessJWT(userID string, role string, issuedAt time.Time, ttl time.Duration, secret []byte) (string, time.Time, error) {
 	expiresAt := issuedAt.Add(ttl)
 	claims := accessTokenClaims{
 		UserID: userID,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(issuedAt),

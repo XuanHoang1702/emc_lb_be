@@ -8,9 +8,10 @@ import (
 
 	"emc_lb/src/internal/app/module"
 	"emc_lb/src/internal/db/sqlc"
-	"emc_lb/src/internal/handler"
+
 	"emc_lb/src/internal/middleware"
 	route "emc_lb/src/internal/routes"
+	"emc_lb/src/pkg/auth"
 	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/logs"
 	"emc_lb/src/pkg/mail"
@@ -74,15 +75,19 @@ func New() (*App, error) {
 	}
 
 	router := gin.New()
-	router.Use(middleware.RequestLogMiddleware(), gin.Recovery())
+	router.Use(middleware.RequestLogMiddleware(), middleware.AcceptLanguageMiddleware(), gin.Recovery())
 
+	// MODULES
 	queries := sqlc.New(logs.WrapDBTX(pgPool))
+	auth.InitRBACManager(queries)
 	refreshTokenStore := cache.NewRedisRefreshTokenStore(redisClient)
 	emailOTPStore := cache.NewRedisEmailOTPStore(redisClient)
 	mailer := mail.NewSMTPMailer()
 	userModule := module.NewUserModule(queries, refreshTokenStore, emailOTPStore, mailer, avatarStorage)
 	productModule := module.NewProductModule(mongoClient.Database(utils.GetMongoDatabaseName()))
 	categoryModule, err := module.NewCategoryModule(mongoClient.Database(utils.GetMongoDatabaseName()))
+	//=================================================================================================
+
 	if err != nil {
 		pgPool.Close()
 		_ = mongoClient.Disconnect(context.Background())
@@ -96,15 +101,13 @@ func New() (*App, error) {
 		_ = redisClient.Close()
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
-	ecommerceHandler := handler.NewEcommerceHandler()
-	ecommerceRoute := route.NewEcommerceRoute(ecommerceHandler)
+
 	route.RegisterRoutes(router, route.RouteGroups{
 		Public: []route.Route{
 			userModule.Routes(),
 			productModule.Routes(),
 			categoryModule.Routes(),
 			brandModule.Routes(),
-			ecommerceRoute,
 		},
 	})
 

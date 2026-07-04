@@ -12,6 +12,7 @@ import (
 )
 
 const ContextUserIDKey = "user_id"
+const ContextRoleKey = "user_role"
 
 func AccessTokenMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
@@ -37,7 +38,7 @@ func AccessTokenMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		userID, err := utils.ParseAccessToken(strings.TrimSpace(tokenParts[1]))
+		userID, role, err := utils.ParseAccessToken(strings.TrimSpace(tokenParts[1]))
 		if err != nil {
 			res.Error(ctx, &res.AppError{
 				Message:    "Invalid access token",
@@ -49,6 +50,7 @@ func AccessTokenMiddleware() gin.HandlerFunc {
 		}
 
 		ctx.Set(ContextUserIDKey, userID)
+		ctx.Set(ContextRoleKey, role)
 		ctx.Next()
 	}
 }

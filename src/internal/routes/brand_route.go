@@ -2,6 +2,7 @@ package route
 
 import (
 	"emc_lb/src/internal/handler"
+	"emc_lb/src/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,10 +18,10 @@ func NewBrandRoute(brandHandler *handler.BrandHandler) *BrandRoute {
 func (r *BrandRoute) Register(router gin.IRouter) {
 	brandRoute := router.Group("/brands")
 	{
-		brandRoute.POST("", r.brandHandler.HandleCreate)
+		brandRoute.POST("", middleware.AccessTokenMiddleware(), middleware.RequirePermission("brand:create"), r.brandHandler.HandleCreate)
 		brandRoute.GET("", r.brandHandler.HandleList)
 		brandRoute.GET("/:id", r.brandHandler.HandleGetByID)
-		brandRoute.PATCH("/:id", r.brandHandler.HandleUpdate)
-		brandRoute.DELETE("/:id", r.brandHandler.HandleDelete)
+		brandRoute.PATCH("/:id", middleware.AccessTokenMiddleware(), middleware.RequirePermission("brand:update"), r.brandHandler.HandleUpdate)
+		brandRoute.DELETE("/:id", middleware.AccessTokenMiddleware(), middleware.RequirePermission("brand:delete"), r.brandHandler.HandleDelete)
 	}
 }

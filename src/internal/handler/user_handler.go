@@ -87,7 +87,7 @@ func (h *UserHandler) HandleLogout(ctx *gin.Context) {
 		return
 	}
 
-	res.Success(ctx, http.StatusOK, "logout successfully")
+	res.Success(ctx, http.StatusOK, "success_logout")
 }
 
 func (h *UserHandler) HandleVerifyEmailOTP(ctx *gin.Context) {
@@ -103,7 +103,7 @@ func (h *UserHandler) HandleVerifyEmailOTP(ctx *gin.Context) {
 		return
 	}
 
-	res.Success(ctx, http.StatusOK, "email verified successfully")
+	res.Success(ctx, http.StatusOK, "success_email_verified")
 }
 
 func (h *UserHandler) HandleDelete(ctx *gin.Context) {
@@ -119,7 +119,7 @@ func (h *UserHandler) HandleDelete(ctx *gin.Context) {
 		return
 	}
 
-	res.Success(ctx, http.StatusOK, "account deleted successfully")
+	res.Success(ctx, http.StatusOK, "success_account_deleted")
 }
 
 func (h *UserHandler) HandleUpsertAvatar(ctx *gin.Context) {

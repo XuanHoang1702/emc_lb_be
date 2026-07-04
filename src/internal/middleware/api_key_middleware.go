@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"os"
 
@@ -20,7 +21,7 @@ func ApiKeyMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		if apiKey != expectedKey {
+		if subtle.ConstantTimeCompare([]byte(apiKey), []byte(expectedKey)) != 1 {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid API Key"})
 			return
 		}
@@ -40,7 +41,7 @@ func ApiKeyTransacionMiddleware() gin.HandlerFunc {
 			ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing X-API-KEY-Transaction"})
 			return
 		}
-		if apiKey != expectedKey {
+		if subtle.ConstantTimeCompare([]byte(apiKey), []byte(expectedKey)) != 1 {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid API KEY Transaction"})
 			return
 		}

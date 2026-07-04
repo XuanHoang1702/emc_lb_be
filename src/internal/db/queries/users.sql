@@ -27,13 +27,25 @@ SELECT
     id,
     email,
     password_hash,
-    email_verified
+    email_verified,
+    role
 FROM users
 WHERE email = $1 AND is_deleted = false
 LIMIT 1;
 
 -- name: GetUserIDByID :one
 SELECT id
+FROM users
+WHERE id = $1 AND is_deleted = false
+LIMIT 1;
+
+-- name: GetUserByID :one
+SELECT
+    id,
+    email,
+    password_hash,
+    email_verified,
+    role
 FROM users
 WHERE id = $1 AND is_deleted = false
 LIMIT 1;
