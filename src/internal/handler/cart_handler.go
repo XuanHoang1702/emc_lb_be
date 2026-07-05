@@ -151,3 +151,29 @@ func (h *CartHandler) HandleClearCart(ctx *gin.Context) {
 
 	res.Success(ctx, http.StatusOK, map[string]string{"message": "Cart cleared successfully"})
 }
+
+func (h *CartHandler) HandleApplyCoupon(ctx *gin.Context) {
+	userID, exists := ctx.Get(middleware.ContextUserIDKey)
+	if !exists {
+		res.Error(ctx, &res.AppError{
+			Message:    "Unauthorized",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
+	var req entities.ApplyCouponRequest
+	if err := validation.BindJSON(ctx, &req, erres.CommonBadRequest); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	cart, err := h.cartService.ApplyCoupon(ctx.Request.Context(), userID.(string), req)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, cart)
+}

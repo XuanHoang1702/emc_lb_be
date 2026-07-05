@@ -16,10 +16,10 @@ type CartModule struct {
 	Route      *route.CartRoute
 }
 
-func NewCartModule(mongoDB *mongo.Database, productRepo repository.ProductRepository) *CartModule {
+func NewCartModule(mongoDB *mongo.Database, productRepo repository.ProductRepository, couponSvc service.CouponService) *CartModule {
 	cartCollection := mongoDB.Collection("carts")
 	repo := repository.NewCartRepository(cartCollection)
-	svc := service.NewCartService(repo, productRepo)
+	svc := service.NewCartService(repo, productRepo, couponSvc)
 	h := handler.NewCartHandler(svc)
 	r := route.NewCartRoute(h)
 

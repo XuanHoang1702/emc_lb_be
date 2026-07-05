@@ -33,6 +33,16 @@ var messages = map[string]map[string]string{
 		"success_category_deleted": "Category deleted successfully",
 		"success_brand_deleted":    "Brand deleted successfully",
 		"err_internal_server":      "Internal server error",
+
+		// Coupon & Cart & Order messages
+		"Coupon code already exists":                                     "Coupon code already exists",
+		"Invalid coupon code":                                            "Invalid coupon code",
+		"Coupon is not active":                                           "Coupon is not active",
+		"Coupon is expired or not yet valid":                             "Coupon is expired or not yet valid",
+		"Coupon usage limit exceeded":                                    "Coupon usage limit exceeded",
+		"Order amount does not meet minimum requirement for this coupon": "Order amount does not meet minimum requirement for this coupon",
+		"Cart cleared successfully":                                      "Cart cleared successfully",
+		"Order must have at least one item":                              "Order must have at least one item",
 	},
 	"vi": {
 		"val_gt":              "%s phải lớn hơn %s",
@@ -61,6 +71,16 @@ var messages = map[string]map[string]string{
 		"success_category_deleted": "Xóa danh mục thành công",
 		"success_brand_deleted":    "Xóa thương hiệu thành công",
 		"err_internal_server":      "Lỗi hệ thống nội bộ",
+
+		// Coupon & Cart & Order messages
+		"Coupon code already exists":                                     "Mã giảm giá đã tồn tại",
+		"Invalid coupon code":                                            "Mã giảm giá không hợp lệ",
+		"Coupon is not active":                                           "Mã giảm giá chưa được kích hoạt",
+		"Coupon is expired or not yet valid":                             "Mã giảm giá đã hết hạn hoặc chưa đến thời gian áp dụng",
+		"Coupon usage limit exceeded":                                    "Mã giảm giá đã vượt quá giới hạn sử dụng",
+		"Order amount does not meet minimum requirement for this coupon": "Giá trị đơn hàng chưa đạt mức tối thiểu để áp dụng mã này",
+		"Cart cleared successfully":                                      "Xóa giỏ hàng thành công",
+		"Order must have at least one item":                              "Đơn hàng phải có ít nhất một sản phẩm",
 	},
 }
 

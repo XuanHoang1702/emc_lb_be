@@ -26,12 +26,14 @@ type OrderService interface {
 type orderService struct {
 	orderRepository   repository.OrderRepository
 	productRepository repository.ProductRepository
+	couponService     CouponService
 }
 
-func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository) OrderService {
+func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, couponSvc CouponService) OrderService {
 	return &orderService{
 		orderRepository:   orderRepository,
 		productRepository: productRepository,
+		couponService:     couponSvc,
 	}
 }
 
@@ -94,6 +96,33 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 		})
 	}
 
+	var discountAmount float64
+	var taxAmount float64
+	
+	if req.CouponCode != "" {
+		coupon, err := s.couponService.ValidateCouponForAmount(ctx, req.CouponCode, totalAmount)
+		if err == nil {
+			if coupon.Type == "percentage" {
+				discountAmount = totalAmount * (coupon.Value / 100.0)
+				if coupon.MaxDiscountAmount > 0 && discountAmount > coupon.MaxDiscountAmount {
+					discountAmount = coupon.MaxDiscountAmount
+				}
+			} else if coupon.Type == "fixed_amount" {
+				discountAmount = coupon.Value
+				if discountAmount > totalAmount {
+					discountAmount = totalAmount
+				}
+			}
+		} else {
+			rollback()
+			return entities.OrderResponse{}, err
+		}
+	}
+
+	amountAfterDiscount := totalAmount - discountAmount
+	taxAmount = amountAfterDiscount * 0.10 // 10% VAT
+	finalTotal := amountAfterDiscount + taxAmount
+
 	invoiceNumber := fmt.Sprintf("INV-%s", uuid.New().String()[:8])
 	now := time.Now().UTC()
 
@@ -101,7 +130,11 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 		UserID:          userID,
 		InvoiceNumber:   invoiceNumber,
 		Items:           items,
-		TotalAmount:     totalAmount,
+		SubTotal:        totalAmount,
+		CouponCode:      req.CouponCode,
+		DiscountAmount:  discountAmount,
+		TaxAmount:       taxAmount,
+		TotalAmount:     finalTotal,
 		Status:          "pending",
 		PaymentStatus:   "unpaid",
 		PaymentMethod:   req.PaymentMethod,
@@ -115,6 +148,12 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 	if err != nil {
 		rollback()
 		return entities.OrderResponse{}, res.WrapError(err, "Can not create order", erres.CommonInternal)
+	}
+
+	// Increment coupon usage if applied
+	if req.CouponCode != "" {
+		// Do this in background to avoid blocking and ensure it runs
+		go s.couponService.IncrementUsage(context.Background(), req.CouponCode, 1)
 	}
 
 	return mapping.ToOrderResponse(createdOrder), nil

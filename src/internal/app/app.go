@@ -102,9 +102,10 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
 
-	orderModule := module.NewOrderModule(mongoClient.Database(utils.GetMongoDatabaseName()))
+	couponModule := module.NewCouponModule(mongoClient.Database(utils.GetMongoDatabaseName()))
+	orderModule := module.NewOrderModule(mongoClient.Database(utils.GetMongoDatabaseName()), couponModule.ServiceInstance())
 	paymentModule := module.NewPaymentModule(orderModule.Service())
-	cartModule := module.NewCartModule(mongoClient.Database(utils.GetMongoDatabaseName()), productModule.Repository())
+	cartModule := module.NewCartModule(mongoClient.Database(utils.GetMongoDatabaseName()), productModule.Repository(), couponModule.ServiceInstance())
 
 	route.RegisterRoutes(router, []route.Route{
 		userModule.Routes(),
@@ -114,6 +115,7 @@ func New() (*App, error) {
 		orderModule.Routes(),
 		paymentModule.Routes(),
 		cartModule.Route,
+		couponModule.Routes(),
 	})
 
 	server := &http.Server{

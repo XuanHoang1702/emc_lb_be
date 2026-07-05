@@ -13,6 +13,10 @@ type Order struct {
 	UserID             string      `json:"user_id"` // User who placed the order
 	InvoiceNumber      string      `json:"invoice_number"`
 	Items              []OrderItem `json:"items"`
+	SubTotal           float64     `json:"sub_total"`
+	CouponCode         string      `json:"coupon_code"`
+	DiscountAmount     float64     `json:"discount_amount"`
+	TaxAmount          float64     `json:"tax_amount"`
 	TotalAmount        float64     `json:"total_amount"`
 	Status             string      `json:"status"`         // pending, processing, shipped, delivered, cancelled
 	PaymentStatus      string      `json:"payment_status"` // unpaid, paid, failed, refunded
@@ -26,6 +30,7 @@ type Order struct {
 
 type CreateOrderRequest struct {
 	Items           []OrderItem `json:"items" binding:"required,min=1,dive"`
+	CouponCode      string      `json:"coupon_code"`
 	PaymentMethod   string      `json:"payment_method" binding:"required"`
 	ShippingAddress string      `json:"shipping_address" binding:"required"`
 	ContactPhone    string      `json:"contact_phone" binding:"required"`
@@ -36,6 +41,10 @@ type OrderResponse struct {
 	UserID          string      `json:"user_id"`
 	InvoiceNumber   string      `json:"invoice_number"`
 	Items           []OrderItem `json:"items"`
+	SubTotal        float64     `json:"sub_total"`
+	CouponCode      string      `json:"coupon_code"`
+	DiscountAmount  float64     `json:"discount_amount"`
+	TaxAmount       float64     `json:"tax_amount"`
 	TotalAmount     float64     `json:"total_amount"`
 	Status          string      `json:"status"`
 	PaymentStatus   string      `json:"payment_status"`

@@ -8,11 +8,12 @@ type CartItem struct {
 }
 
 type Cart struct {
-	ID        string     `json:"id" bson:"_id,omitempty"`
-	UserID    string     `json:"user_id" bson:"user_id"`
-	Items     []CartItem `json:"items" bson:"items"`
-	CreatedAt time.Time  `json:"created_at" bson:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at" bson:"updated_at"`
+	ID         string     `json:"id" bson:"_id,omitempty"`
+	UserID     string     `json:"user_id" bson:"user_id"`
+	Items      []CartItem `json:"items" bson:"items"`
+	CouponCode string     `json:"coupon_code" bson:"coupon_code"`
+	CreatedAt  time.Time  `json:"created_at" bson:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at" bson:"updated_at"`
 }
 
 // Request payloads
@@ -23,6 +24,10 @@ type AddCartItemRequest struct {
 
 type UpdateCartItemRequest struct {
 	Quantity int64 `json:"quantity" binding:"required,min=1"`
+}
+
+type ApplyCouponRequest struct {
+	CouponCode string `json:"coupon_code" binding:"required"`
 }
 
 // Response payload with populated product details and calculated totals
@@ -36,10 +41,14 @@ type CartItemResponse struct {
 }
 
 type CartResponse struct {
-	ID          string             `json:"id"`
-	UserID      string             `json:"user_id"`
-	Items       []CartItemResponse `json:"items"`
-	TotalAmount float64            `json:"total_amount"`
-	CreatedAt   time.Time          `json:"created_at"`
-	UpdatedAt   time.Time          `json:"updated_at"`
+	ID             string             `json:"id"`
+	UserID         string             `json:"user_id"`
+	Items          []CartItemResponse `json:"items"`
+	SubTotal       float64            `json:"sub_total"`
+	CouponCode     string             `json:"coupon_code"`
+	DiscountAmount float64            `json:"discount_amount"`
+	TaxAmount      float64            `json:"tax_amount"`
+	TotalAmount    float64            `json:"total_amount"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
 }

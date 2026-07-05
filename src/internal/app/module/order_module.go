@@ -14,11 +14,11 @@ type OrderModule struct {
 	orderService service.OrderService
 }
 
-func NewOrderModule(database *mongo.Database) *OrderModule {
+func NewOrderModule(database *mongo.Database, couponSvc service.CouponService) *OrderModule {
 	orderRepository := repository.NewOrderRepository(database.Collection("orders"))
 	productRepository := repository.NewProductRepository(database.Collection("products"))
 	
-	orderService := service.NewOrderService(orderRepository, productRepository)
+	orderService := service.NewOrderService(orderRepository, productRepository, couponSvc)
 	orderHandler := handler.NewOrderHandler(orderService)
 	orderRoute := route.NewOrderRoute(orderHandler)
 

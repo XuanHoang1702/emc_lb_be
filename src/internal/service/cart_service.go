@@ -17,17 +17,20 @@ type CartService interface {
 	UpdateItem(ctx context.Context, userID string, productID string, req entities.UpdateCartItemRequest) (entities.CartResponse, error)
 	RemoveItem(ctx context.Context, userID string, productID string) (entities.CartResponse, error)
 	ClearCart(ctx context.Context, userID string) error
+	ApplyCoupon(ctx context.Context, userID string, req entities.ApplyCouponRequest) (entities.CartResponse, error)
 }
 
 type cartService struct {
 	cartRepository    repository.CartRepository
 	productRepository repository.ProductRepository
+	couponService     CouponService
 }
 
-func NewCartService(cartRepository repository.CartRepository, productRepository repository.ProductRepository) CartService {
+func NewCartService(cartRepository repository.CartRepository, productRepository repository.ProductRepository, couponService CouponService) CartService {
 	return &cartService{
 		cartRepository:    cartRepository,
 		productRepository: productRepository,
+		couponService:     couponService,
 	}
 }
 
@@ -161,26 +164,45 @@ func (s *cartService) ClearCart(ctx context.Context, userID string) error {
 	return s.cartRepository.ClearCart(ctx, userID)
 }
 
+func (s *cartService) ApplyCoupon(ctx context.Context, userID string, req entities.ApplyCouponRequest) (entities.CartResponse, error) {
+	cart, err := s.cartRepository.GetByUserID(ctx, userID)
+	if err != nil {
+		return entities.CartResponse{}, res.WrapError(err, "Failed to get cart", erres.CommonInternal)
+	}
+
+	// Just save the coupon code to the cart. Validation happens in buildCartResponse
+	cart.CouponCode = req.CouponCode
+	savedCart, err := s.cartRepository.Save(ctx, cart)
+	if err != nil {
+		return entities.CartResponse{}, res.WrapError(err, "Failed to update cart", erres.CommonInternal)
+	}
+
+	return s.buildCartResponse(ctx, savedCart)
+}
+
 func (s *cartService) buildCartResponse(ctx context.Context, cart entities.Cart) (entities.CartResponse, error) {
 	response := entities.CartResponse{
-		ID:          cart.ID,
-		UserID:      cart.UserID,
-		Items:       []entities.CartItemResponse{},
-		TotalAmount: 0,
-		CreatedAt:   cart.CreatedAt,
-		UpdatedAt:   cart.UpdatedAt,
+		ID:             cart.ID,
+		UserID:         cart.UserID,
+		Items:          []entities.CartItemResponse{},
+		CouponCode:     cart.CouponCode,
+		SubTotal:       0,
+		DiscountAmount: 0,
+		TaxAmount:      0,
+		TotalAmount:    0,
+		CreatedAt:      cart.CreatedAt,
+		UpdatedAt:      cart.UpdatedAt,
 	}
 
 	for _, item := range cart.Items {
 		product, err := s.productRepository.GetByID(ctx, item.ProductID)
 		if err != nil {
-			// If product was deleted, we still include it but mark it invalid or just skip.
-			// For this implementation, let's skip invalid items from response but maybe we shouldn't fail.
+			// Skip invalid/deleted products
 			continue
 		}
 
 		subTotal := product.Price * float64(item.Quantity)
-		response.TotalAmount += subTotal
+		response.SubTotal += subTotal
 
 		response.Items = append(response.Items, entities.CartItemResponse{
 			ProductID:    product.ID,
@@ -191,6 +213,30 @@ func (s *cartService) buildCartResponse(ctx context.Context, cart entities.Cart)
 			SubTotal:     subTotal,
 		})
 	}
+
+	// Calculate discount
+	if cart.CouponCode != "" {
+		coupon, err := s.couponService.ValidateCouponForAmount(ctx, cart.CouponCode, response.SubTotal)
+		if err == nil {
+			if coupon.Type == "percentage" {
+				discount := response.SubTotal * (coupon.Value / 100.0)
+				if coupon.MaxDiscountAmount > 0 && discount > coupon.MaxDiscountAmount {
+					discount = coupon.MaxDiscountAmount
+				}
+				response.DiscountAmount = discount
+			} else if coupon.Type == "fixed_amount" {
+				response.DiscountAmount = coupon.Value
+				if response.DiscountAmount > response.SubTotal {
+					response.DiscountAmount = response.SubTotal
+				}
+			}
+		}
+	}
+
+	// Calculate Tax and Total
+	amountAfterDiscount := response.SubTotal - response.DiscountAmount
+	response.TaxAmount = amountAfterDiscount * 0.10 // 10% VAT
+	response.TotalAmount = amountAfterDiscount + response.TaxAmount
 
 	return response, nil
 }

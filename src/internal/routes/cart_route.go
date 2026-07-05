@@ -26,5 +26,6 @@ func (r *CartRoute) RegisterProtected(router gin.IRouter) {
 		cartGroup.PUT("/items/:productId", r.cartHandler.HandleUpdateItem)
 		cartGroup.DELETE("/items/:productId", r.cartHandler.HandleRemoveItem)
 		cartGroup.DELETE("", r.cartHandler.HandleClearCart)
+		cartGroup.POST("/coupon", r.cartHandler.HandleApplyCoupon)
 	}
 }
