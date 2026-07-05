@@ -18,14 +18,23 @@ import (
 type ProductService interface {
 	Create(context.Context, entities.CreateProductRequest) (entities.ProductResponse, error)
 	List(context.Context) ([]entities.ProductResponse, error)
+	GetByID(context.Context, string) (entities.ProductResponse, error)
+	Update(context.Context, string, entities.UpdateProductRequest) (entities.ProductResponse, error)
+	Delete(context.Context, string) error
 }
 
 type productService struct {
-	productRepository repository.ProductRepository
+	productRepository  repository.ProductRepository
+	categoryRepository repository.CategoryRepository
+	brandRepository    repository.BrandRepository
 }
 
-func NewProductService(productRepository repository.ProductRepository) ProductService {
-	return &productService{productRepository: productRepository}
+func NewProductService(productRepository repository.ProductRepository, categoryRepository repository.CategoryRepository, brandRepository repository.BrandRepository) ProductService {
+	return &productService{
+		productRepository:  productRepository,
+		categoryRepository: categoryRepository,
+		brandRepository:    brandRepository,
+	}
 }
 
 func (s *productService) Create(ctx context.Context, req entities.CreateProductRequest) (entities.ProductResponse, error) {
@@ -55,6 +64,28 @@ func (s *productService) Create(ctx context.Context, req entities.CreateProductR
 		normalizedRequest.Status = "active"
 	}
 
+	if normalizedRequest.CategoryID != "" {
+		exists, err := s.categoryRepository.ExistsByID(ctx, normalizedRequest.CategoryID)
+		if err != nil || !exists {
+			return entities.ProductResponse{}, &res.AppError{
+				Message:    "Category does not exist",
+				Code:       erres.CommonBadRequest,
+				StatusCode: http.StatusBadRequest,
+			}
+		}
+	}
+
+	if normalizedRequest.BrandID != "" {
+		exists, err := s.brandRepository.ExistsByID(ctx, normalizedRequest.BrandID)
+		if err != nil || !exists {
+			return entities.ProductResponse{}, &res.AppError{
+				Message:    "Brand does not exist",
+				Code:       erres.CommonBadRequest,
+				StatusCode: http.StatusBadRequest,
+			}
+		}
+	}
+
 	now := time.Now().UTC()
 	product, err := s.productRepository.Create(ctx, entities.Product{
 		Name:           normalizedRequest.Name,
@@ -71,6 +102,8 @@ func (s *productService) Create(ctx context.Context, req entities.CreateProductR
 		Tags:           normalizedRequest.Tags,
 		Status:         normalizedRequest.Status,
 		IsFeatured:     normalizedRequest.IsFeatured,
+		CategoryID:     normalizedRequest.CategoryID,
+		BrandID:        normalizedRequest.BrandID,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	})
@@ -93,6 +126,122 @@ func (s *productService) List(ctx context.Context) ([]entities.ProductResponse, 
 	}
 
 	return responses, nil
+}
+
+func (s *productService) GetByID(ctx context.Context, id string) (entities.ProductResponse, error) {
+	product, err := s.productRepository.GetByID(ctx, id)
+	if err != nil {
+		return entities.ProductResponse{}, res.WrapError(err, "Product not found", erres.CommonNotFound)
+	}
+	return mapping.ToProductResponse(product), nil
+}
+
+func (s *productService) Update(ctx context.Context, id string, req entities.UpdateProductRequest) (entities.ProductResponse, error) {
+	updateData := make(map[string]any)
+
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			return entities.ProductResponse{}, &res.AppError{
+				Message:    "Product name cannot be empty",
+				Code:       erres.CommonBadRequest,
+				StatusCode: http.StatusBadRequest,
+			}
+		}
+		updateData["name"] = name
+		if req.Slug == nil {
+			updateData["slug"] = buildSlug(name)
+		}
+	}
+
+	if req.Slug != nil {
+		updateData["slug"] = buildSlug(*req.Slug)
+	}
+	if req.Description != nil {
+		updateData["description"] = strings.TrimSpace(*req.Description)
+	}
+	if req.ShortDesc != nil {
+		updateData["short_desc"] = strings.TrimSpace(*req.ShortDesc)
+	}
+	if req.Price != nil {
+		updateData["price"] = *req.Price
+	}
+	if req.OriginalPrice != nil {
+		updateData["original_price"] = *req.OriginalPrice
+	}
+	if req.SKU != nil {
+		updateData["sku"] = strings.TrimSpace(*req.SKU)
+	}
+	if req.Stock != nil {
+		updateData["stock"] = *req.Stock
+	}
+	if req.AllowBackorder != nil {
+		updateData["allow_backorder"] = *req.AllowBackorder
+	}
+	if req.Thumbnail != nil {
+		updateData["thumbnail"] = strings.TrimSpace(*req.Thumbnail)
+	}
+	if req.Images != nil {
+		normalizeStringSlice(req.Images)
+		updateData["images"] = req.Images
+	}
+	if req.Tags != nil {
+		normalizeStringSlice(req.Tags)
+		updateData["tags"] = req.Tags
+	}
+	if req.Status != nil {
+		updateData["status"] = *req.Status
+	}
+	if req.IsFeatured != nil {
+		updateData["is_featured"] = *req.IsFeatured
+	}
+	if req.CategoryID != nil {
+		if *req.CategoryID != "" {
+			exists, err := s.categoryRepository.ExistsByID(ctx, *req.CategoryID)
+			if err != nil || !exists {
+				return entities.ProductResponse{}, &res.AppError{
+					Message:    "Category does not exist",
+					Code:       erres.CommonBadRequest,
+					StatusCode: http.StatusBadRequest,
+				}
+			}
+		}
+		updateData["category_id"] = *req.CategoryID
+	}
+	if req.BrandID != nil {
+		if *req.BrandID != "" {
+			exists, err := s.brandRepository.ExistsByID(ctx, *req.BrandID)
+			if err != nil || !exists {
+				return entities.ProductResponse{}, &res.AppError{
+					Message:    "Brand does not exist",
+					Code:       erres.CommonBadRequest,
+					StatusCode: http.StatusBadRequest,
+				}
+			}
+		}
+		updateData["brand_id"] = *req.BrandID
+	}
+
+	updateData["updated_at"] = time.Now().UTC()
+
+	product, err := s.productRepository.Update(ctx, id, updateData)
+	if err != nil {
+		return entities.ProductResponse{}, res.WrapError(err, "Failed to update product", erres.CommonInternal)
+	}
+
+	return mapping.ToProductResponse(product), nil
+}
+
+func (s *productService) Delete(ctx context.Context, id string) error {
+	updateData := map[string]any{
+		"is_deleted": true,
+		"updated_at": time.Now().UTC(),
+	}
+	err := s.productRepository.Delete(ctx, id, updateData)
+	if err != nil {
+		return res.WrapError(err, "Failed to delete product", erres.CommonInternal)
+	}
+	return nil
 }
 
 func normalizeStringSlice(values []string) {

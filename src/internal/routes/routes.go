@@ -9,16 +9,11 @@ import (
 )
 
 type Route interface {
-	Register(gin.IRouter)
+	RegisterPublic(gin.IRouter)
+	RegisterProtected(gin.IRouter)
 }
 
-type RouteGroups struct {
-	Public      []Route
-	Protected   []Route
-	Transaction []Route
-}
-
-func RegisterRoutes(router *gin.Engine, groups RouteGroups) {
+func RegisterRoutes(router *gin.Engine, modules []Route) {
 	router.GET("/health", func(ctx *gin.Context) {
 		ctx.String(http.StatusOK, "ok")
 	})
@@ -26,23 +21,14 @@ func RegisterRoutes(router *gin.Engine, groups RouteGroups) {
 	apiV1 := router.Group("/api/v1")
 
 	publicGroup := apiV1.Group("")
-	registerGroup(publicGroup, groups.Public)
-
 	protectedGroup := apiV1.Group("")
-	protectedGroup.Use(middleware.ApiKeyMiddleware())
-	registerGroup(protectedGroup, groups.Protected)
+	protectedGroup.Use(middleware.AccessTokenMiddleware())
 
-	transactionGroup := apiV1.Group("/transaction")
-	transactionGroup.Use(middleware.ApiKeyTransacionMiddleware())
-	registerGroup(transactionGroup, groups.Transaction)
-}
-
-func registerGroup(router gin.IRouter, routes []Route) {
-	for _, currentRoute := range routes {
-		if currentRoute == nil {
+	for _, moduleRoute := range modules {
+		if moduleRoute == nil {
 			continue
 		}
-
-		currentRoute.Register(router)
+		moduleRoute.RegisterPublic(publicGroup)
+		moduleRoute.RegisterProtected(protectedGroup)
 	}
 }

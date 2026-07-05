@@ -14,6 +14,9 @@ import (
 type ProductRepository interface {
 	Create(context.Context, entities.Product) (entities.Product, error)
 	List(context.Context) ([]entities.Product, error)
+	GetByID(context.Context, string) (entities.Product, error)
+	Update(context.Context, string, map[string]any) (entities.Product, error)
+	Delete(context.Context, string, map[string]any) error
 }
 
 type productRepository struct {
@@ -62,6 +65,62 @@ func (r *productRepository) List(ctx context.Context) ([]entities.Product, error
 	}
 
 	return products, nil
+}
+
+func (r *productRepository) GetByID(ctx context.Context, id string) (entities.Product, error) {
+	objID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return entities.Product{}, err
+	}
+	var doc productDoc
+	err = r.collection.FindOne(ctx, bson.M{
+		"_id":        objID,
+		"is_deleted": false,
+	}).Decode(&doc)
+	if err != nil {
+		return entities.Product{}, err
+	}
+
+	return toProductEntity(doc), nil
+}
+
+func (r *productRepository) Update(ctx context.Context, id string, update map[string]any) (entities.Product, error) {
+	objID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return entities.Product{}, err
+	}
+	var doc productDoc
+	err = r.collection.FindOneAndUpdate(
+		ctx,
+		bson.M{"_id": objID, "is_deleted": false},
+		bson.M{"$set": update},
+		options.FindOneAndUpdate().SetReturnDocument(options.After),
+	).Decode(&doc)
+	if err != nil {
+		return entities.Product{}, err
+	}
+
+	return toProductEntity(doc), nil
+}
+
+func (r *productRepository) Delete(ctx context.Context, id string, update map[string]any) error {
+	objID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+	result, err := r.collection.UpdateOne(ctx, bson.M{
+		"_id":        objID,
+		"is_deleted": false,
+	}, bson.M{"$set": update})
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+
+	return nil
 }
 
 // ============================================================================

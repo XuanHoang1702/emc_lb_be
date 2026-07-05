@@ -20,6 +20,8 @@ func ToProductResponse(product entities.Product) entities.ProductResponse {
 		Tags:           product.Tags,
 		Status:         product.Status,
 		IsFeatured:     product.IsFeatured,
+		CategoryID:     product.CategoryID,
+		BrandID:        product.BrandID,
 		CreatedAt:      product.CreatedAt,
 		UpdatedAt:      product.UpdatedAt,
 	}

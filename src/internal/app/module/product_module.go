@@ -15,7 +15,9 @@ type ProductModule struct {
 
 func NewProductModule(database *mongo.Database) *ProductModule {
 	productRepository := repository.NewProductRepository(database.Collection("products"))
-	productService := service.NewProductService(productRepository)
+	categoryRepository := repository.NewCategoryRepository(database.Collection("categories"))
+	brandRepository := repository.NewBrandRepository(database.Collection("brands"))
+	productService := service.NewProductService(productRepository, categoryRepository, brandRepository)
 	productHandler := handler.NewProductHandler(productService)
 	productRoute := route.NewProductRoute(productHandler)
 

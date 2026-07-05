@@ -3,9 +3,12 @@ package service
 import (
 	"context"
 	"log"
-	"os"
+	"net/http"
 
 	"emc_lb/src/pkg/entities"
+	erres "emc_lb/src/pkg/errors"
+	"emc_lb/src/pkg/res"
+	"emc_lb/src/pkg/utils"
 
 	"crypto/hmac"
 	"crypto/sha256"
@@ -16,18 +19,20 @@ import (
 
 type PaymentService interface {
 	InitCheckout(ctx context.Context, req entities.CheckoutInitRequest) (*entities.CheckoutInitResponse, error)
-	ProcessWebhook(ctx context.Context, req entities.SePayWebhookRequest) error
+	ProcessWebhook(ctx context.Context, req entities.SePayWebhookRequest, authHeader string) error
 }
 
 type paymentService struct {
-	merchantID string
-	secretKey  string
+	merchantID   string
+	secretKey    string
+	orderService OrderService
 }
 
-func NewPaymentService() PaymentService {
+func NewPaymentService(orderService OrderService) PaymentService {
 	return &paymentService{
-		merchantID: os.Getenv("CLIENT_KEY"),
-		secretKey:  os.Getenv("SECREC_KEY"),
+		merchantID:   utils.GetEnv("CLIENT_KEY", ""),
+		secretKey:    utils.GetEnv("SECRET_KEY", ""),
+		orderService: orderService,
 	}
 }
 
@@ -86,9 +91,25 @@ func (s *paymentService) InitCheckout(ctx context.Context, req entities.Checkout
 	}, nil
 }
 
-func (s *paymentService) ProcessWebhook(ctx context.Context, req entities.SePayWebhookRequest) error {
-	// TODO: Log the webhook or update Order/Transaction status in database
+func (s *paymentService) ProcessWebhook(ctx context.Context, req entities.SePayWebhookRequest, authHeader string) error {
+	// API KEY or Bearer token validation
+	expectedToken := "Apikey " + s.secretKey
+	if authHeader != expectedToken && authHeader != "Bearer "+s.secretKey {
+		return &res.AppError{
+			Message:    "Unauthorized webhook signature",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		}
+	}
+
 	log.Printf("Received payment via SePay webhook: ID=%d, Amount=%f, Code=%s", req.ID, req.TransferAmount, req.Code)
+
+	// SePay sends the transfer content in req.Code (which could be the invoice number like INV-1234)
+	invoiceNumber := strings.TrimSpace(req.Code)
+	if err := s.orderService.MarkAsPaidByInvoice(ctx, invoiceNumber); err != nil {
+		log.Printf("Failed to mark order as paid: %v", err)
+		return err
+	}
 
 	return nil
 }

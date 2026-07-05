@@ -49,7 +49,8 @@ func (h *PaymentHandler) HandleSepayWebhook(ctx *gin.Context) {
 		return
 	}
 
-	if err := h.paymentService.ProcessWebhook(ctx.Request.Context(), req); err != nil {
+	authHeader := ctx.GetHeader("Authorization")
+	if err := h.paymentService.ProcessWebhook(ctx.Request.Context(), req, authHeader); err != nil {
 		res.Error(ctx, err)
 		return
 	}

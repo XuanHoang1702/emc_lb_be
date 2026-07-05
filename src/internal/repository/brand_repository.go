@@ -17,6 +17,7 @@ type BrandRepository interface {
 	GetByID(context.Context, string) (entities.Brand, error)
 	Update(context.Context, string, map[string]any) (entities.Brand, error)
 	Delete(context.Context, string, map[string]any) error
+	ExistsByID(context.Context, string) (bool, error)
 	ExistsByName(context.Context, string, *string) (bool, error)
 	ExistsBySlug(context.Context, string, *string) (bool, error)
 	ExistsByPosition(context.Context, int64, *string) (bool, error)
@@ -267,6 +268,25 @@ func toBrandEntity(doc brandDoc) entities.Brand {
 // ============================================================================
 // Existence Checks
 // ============================================================================
+
+func (r *brandRepository) ExistsByID(ctx context.Context, id string) (bool, error) {
+	objID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return false, err
+	}
+	err = r.collection.FindOne(ctx, bson.M{
+		"_id":        objID,
+		"is_deleted": false,
+	}).Err()
+	if err == mongo.ErrNoDocuments {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
 
 func (r *brandRepository) ExistsByName(ctx context.Context, name string, excludeID *string) (bool, error) {
 	return r.existsByField(ctx, "name", name, excludeID)

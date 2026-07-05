@@ -10,9 +10,8 @@ type PaymentModule struct {
 	routes route.Route
 }
 
-func NewPaymentModule() *PaymentModule {
-	// If repository is needed in the future, inject it here
-	paymentService := service.NewPaymentService()
+func NewPaymentModule(orderService service.OrderService) *PaymentModule {
+	paymentService := service.NewPaymentService(orderService)
 	paymentHandler := handler.NewPaymentHandler(paymentService)
 	paymentRoute := route.NewPaymentRoute(paymentHandler)
 
