@@ -67,9 +67,9 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 			StatusCode: http.StatusConflict,
 		}
 	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
-	}
+	// if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	// 	return entities.RegisterUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
+	// }
 
 	passwordHash, err := utils.HashPassword(normalizedRequest.Password)
 	if err != nil {
