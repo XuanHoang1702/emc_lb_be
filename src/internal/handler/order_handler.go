@@ -109,3 +109,30 @@ func (h *OrderHandler) HandleGetOrder(ctx *gin.Context) {
 
 	res.Success(ctx, http.StatusOK, order)
 }
+
+func (h *OrderHandler) HandleUpdateStatus(ctx *gin.Context) {
+	id := ctx.Param("id")
+	if id == "" {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid order ID",
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
+		})
+		return
+	}
+
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := validation.BindJSON(ctx, &req, erres.CommonBadRequest); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	if err := h.orderService.UpdateOrderStatus(ctx.Request.Context(), id, req.Status); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, map[string]string{"message": "Order status updated successfully"})
+}

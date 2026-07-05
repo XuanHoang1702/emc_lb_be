@@ -10,7 +10,8 @@ import (
 )
 
 type ProductModule struct {
-	routes route.Route
+	routes     route.Route
+	repository repository.ProductRepository
 }
 
 func NewProductModule(database *mongo.Database) *ProductModule {
@@ -22,8 +23,13 @@ func NewProductModule(database *mongo.Database) *ProductModule {
 	productRoute := route.NewProductRoute(productHandler)
 
 	return &ProductModule{
-		routes: productRoute,
+		routes:     productRoute,
+		repository: productRepository,
 	}
+}
+
+func (m *ProductModule) Repository() repository.ProductRepository {
+	return m.repository
 }
 
 func (m *ProductModule) Routes() route.Route {

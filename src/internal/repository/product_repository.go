@@ -17,6 +17,7 @@ type ProductRepository interface {
 	GetByID(context.Context, string) (entities.Product, error)
 	Update(context.Context, string, map[string]any) (entities.Product, error)
 	Delete(context.Context, string, map[string]any) error
+	UpdateStock(context.Context, string, int64, int64) error
 }
 
 type productRepository struct {
@@ -112,6 +113,43 @@ func (r *productRepository) Delete(ctx context.Context, id string, update map[st
 		"_id":        objID,
 		"is_deleted": false,
 	}, bson.M{"$set": update})
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+
+	return nil
+}
+
+func (r *productRepository) UpdateStock(ctx context.Context, id string, stockDelta int64, soldDelta int64) error {
+	objID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+
+	filter := bson.M{
+		"_id":        objID,
+		"is_deleted": false,
+	}
+
+	// If decreasing stock, ensure we have enough stock unless AllowBackorder is true
+	// We can let the service layer handle the validation or do it atomically here.
+	// For simplicity, we just apply the increment. The service layer should validate stock >= quantity first.
+
+	update := bson.M{
+		"$inc": bson.M{
+			"stock":      stockDelta,
+			"sold_count": soldDelta,
+		},
+		"$set": bson.M{
+			"updated_at": time.Now().UTC(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return err
 	}

@@ -104,6 +104,7 @@ func New() (*App, error) {
 
 	orderModule := module.NewOrderModule(mongoClient.Database(utils.GetMongoDatabaseName()))
 	paymentModule := module.NewPaymentModule(orderModule.Service())
+	cartModule := module.NewCartModule(mongoClient.Database(utils.GetMongoDatabaseName()), productModule.Repository())
 
 	route.RegisterRoutes(router, []route.Route{
 		userModule.Routes(),
@@ -112,6 +113,7 @@ func New() (*App, error) {
 		brandModule.Routes(),
 		orderModule.Routes(),
 		paymentModule.Routes(),
+		cartModule.Route,
 	})
 
 	server := &http.Server{

@@ -28,5 +28,6 @@ func (r *OrderRoute) RegisterProtected(router gin.IRouter) {
 		
 		// Admin only
 		orderGroup.GET("", middleware.RequirePermission("manage_orders"), r.orderHandler.HandleGetAllOrders)
+		orderGroup.PATCH("/:id/status", middleware.RequirePermission("manage_orders"), r.orderHandler.HandleUpdateStatus)
 	}
 }
