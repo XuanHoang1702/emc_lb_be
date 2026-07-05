@@ -46,10 +46,19 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 
 	var totalAmount float64
 	var items []entities.OrderItem
+	var deductedItems []entities.OrderItem
+
+	rollback := func() {
+		for _, di := range deductedItems {
+			// Use context.Background() to ensure rollback completes even if parent context is cancelled
+			_ = s.productRepository.UpdateStock(context.Background(), di.ProductID, di.Quantity, -di.Quantity)
+		}
+	}
 
 	for _, item := range req.Items {
 		product, err := s.productRepository.GetByID(ctx, item.ProductID)
 		if err != nil {
+			rollback()
 			return entities.OrderResponse{}, &res.AppError{
 				Message:    fmt.Sprintf("Product %s not found", item.ProductID),
 				Code:       erres.CommonBadRequest,
@@ -58,6 +67,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 		}
 
 		if product.Stock < item.Quantity && !product.AllowBackorder {
+			rollback()
 			return entities.OrderResponse{}, &res.AppError{
 				Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
 				Code:       erres.CommonBadRequest,
@@ -67,8 +77,11 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 
 		// Deduct stock
 		if err := s.productRepository.UpdateStock(ctx, item.ProductID, -item.Quantity, item.Quantity); err != nil {
+			rollback()
 			return entities.OrderResponse{}, res.WrapError(err, "Failed to update stock", erres.CommonInternal)
 		}
+
+		deductedItems = append(deductedItems, item)
 
 		// Use the actual current price of the product
 		itemPrice := product.Price
@@ -100,6 +113,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 
 	createdOrder, err := s.orderRepository.Create(ctx, order)
 	if err != nil {
+		rollback()
 		return entities.OrderResponse{}, res.WrapError(err, "Can not create order", erres.CommonInternal)
 	}
 
@@ -182,7 +196,8 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, id string, status 
 	// If transitioning to cancelled, restore stock
 	if status == "cancelled" {
 		for _, item := range order.Items {
-			_ = s.productRepository.UpdateStock(ctx, item.ProductID, item.Quantity, -item.Quantity)
+			// Use context.Background() to avoid cancellation mid-rollback
+			_ = s.productRepository.UpdateStock(context.Background(), item.ProductID, item.Quantity, -item.Quantity)
 		}
 	}
 
