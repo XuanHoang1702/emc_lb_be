@@ -37,25 +37,25 @@ func (h *PaymentHandler) HandleInitCheckout(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, data)
 }
 
-// HandleSepayWebhook handles webhook events from SePay
-func (h *PaymentHandler) HandleSepayWebhook(ctx *gin.Context) {
-	var req entities.SePayWebhookRequest
+// HandleSepayIPN handles IPN (Instant Payment Notification) from SePay Payment Gateway
+func (h *PaymentHandler) HandleSepayIPN(ctx *gin.Context) {
+	var req entities.SePayIPNRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		res.Error(ctx, &res.AppError{
 			Code:       errors.UserInvalidFormat,
-			Message:    "Invalid webhook payload format",
+			Message:    "Invalid IPN payload format",
 			StatusCode: http.StatusBadRequest,
 		})
 		return
 	}
 
-	authHeader := ctx.GetHeader("Authorization")
-	if err := h.paymentService.ProcessWebhook(ctx.Request.Context(), req, authHeader); err != nil {
+	if err := h.paymentService.ProcessIPN(ctx.Request.Context(), req); err != nil {
 		res.Error(ctx, err)
 		return
 	}
 
-	res.Success(ctx, http.StatusOK, "Webhook received successfully")
+	// SePay expects 200 OK to acknowledge receipt
+	res.Success(ctx, http.StatusOK, "IPN received successfully")
 }
 
 // HandleTestCheckoutLink renders an auto-submitting HTML form for testing checkout via a simple GET link
@@ -64,6 +64,7 @@ func (h *PaymentHandler) HandleTestCheckoutLink(ctx *gin.Context) {
 		OrderAmount:        150000,
 		OrderInvoiceNumber: "TEST_LINK_001",
 		OrderDescription:   "Test thanh toan link",
+		PaymentMethod:      "BANK_TRANSFER",
 	}
 
 	data, err := h.paymentService.InitCheckout(ctx.Request.Context(), req)
@@ -77,9 +78,9 @@ func (h *PaymentHandler) HandleTestCheckoutLink(ctx *gin.Context) {
 	<html>
 	<head><title>Redirecting to SePay...</title></head>
 	<body onload="document.getElementById('sepayForm').submit();">
-		<p>Đang chuyển hướng sang cổng thanh toán SePay...</p>
+		<p>Redirecting to SePay Payment Gateway...</p>
 		<form method="POST" action="` + data.CheckoutURL + `" id="sepayForm" style="display:none;">`
-	
+
 	for key, value := range data.FormValues {
 		htmlContent += `<input type="hidden" name="` + key + `" value="` + value + `">`
 	}
@@ -91,4 +92,3 @@ func (h *PaymentHandler) HandleTestCheckoutLink(ctx *gin.Context) {
 
 	ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(htmlContent))
 }
-

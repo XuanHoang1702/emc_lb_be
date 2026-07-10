@@ -17,8 +17,8 @@ func NewPaymentRoute(paymentHandler *handler.PaymentHandler) *PaymentRoute {
 func (r *PaymentRoute) RegisterPublic(router gin.IRouter) {
 	paymentGroup := router.Group("/payment")
 	{
-		// Webhook endpoint for SePay IPN
-		paymentGroup.POST("/webhook", r.paymentHandler.HandleSepayWebhook)
+		// IPN endpoint for SePay Payment Gateway
+		paymentGroup.POST("/ipn", r.paymentHandler.HandleSepayIPN)
 
 		// Test endpoint: Generates a clickable link/redirect for testing the payment gateway in browser
 		paymentGroup.GET("/test-checkout", r.paymentHandler.HandleTestCheckoutLink)

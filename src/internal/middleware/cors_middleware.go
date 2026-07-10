@@ -9,10 +9,13 @@ import (
 
 func CORSMiddleware() gin.HandlerFunc {
 	config := cors.DefaultConfig()
-	// You can specify allowed origins here, for example: []string{"http://localhost:3000"}
-	// Using AllowAllOrigins for the base setup to ensure broad compatibility initially
-	config.AllowAllOrigins = true
-	
+
+	// AllowAllOrigins + AllowCredentials is forbidden by CORS spec.
+	// Use AllowOriginFunc to dynamically mirror the Origin header instead.
+	config.AllowOriginFunc = func(origin string) bool {
+		return true // In production, restrict to your known frontend domains
+	}
+
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{
 		"Origin",
