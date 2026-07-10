@@ -5,6 +5,7 @@ import "emc_lb/src/pkg/entities"
 func ToProductResponse(product entities.Product) entities.ProductResponse {
 	return entities.ProductResponse{
 		ID:             product.ID,
+		ShopID:         product.ShopID,
 		Name:           product.Name,
 		Slug:           product.Slug,
 		Description:    product.Description,

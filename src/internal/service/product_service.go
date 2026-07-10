@@ -104,6 +104,7 @@ func (s *productService) Create(ctx context.Context, req entities.CreateProductR
 		IsFeatured:     normalizedRequest.IsFeatured,
 		CategoryID:     normalizedRequest.CategoryID,
 		BrandID:        normalizedRequest.BrandID,
+		ShopID:         normalizedRequest.ShopID,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	})
@@ -220,6 +221,9 @@ func (s *productService) Update(ctx context.Context, id string, req entities.Upd
 			}
 		}
 		updateData["brand_id"] = *req.BrandID
+	}
+	if req.ShopID != nil {
+		updateData["shop_id"] = *req.ShopID
 	}
 
 	updateData["updated_at"] = time.Now().UTC()

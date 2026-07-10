@@ -38,13 +38,13 @@ func (h *OrderHandler) HandleCreate(ctx *gin.Context) {
 		return
 	}
 
-	order, err := h.orderService.CreateOrder(ctx.Request.Context(), userID.(string), createRequest)
+	orders, err := h.orderService.CreateOrder(ctx.Request.Context(), userID.(string), createRequest)
 	if err != nil {
 		res.Error(ctx, err)
 		return
 	}
 
-	res.Success(ctx, http.StatusCreated, order)
+	res.Success(ctx, http.StatusCreated, "Orders created successfully", orders)
 }
 
 func (h *OrderHandler) HandleMyOrders(ctx *gin.Context) {

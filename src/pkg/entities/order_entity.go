@@ -10,6 +10,8 @@ type OrderItem struct {
 
 type Order struct {
 	ID                 string      `json:"id"`
+	PaymentGroupID     string      `json:"payment_group_id"` // Used for group payment
+	ShopID             string      `json:"shop_id"`
 	UserID             string      `json:"user_id"` // User who placed the order
 	InvoiceNumber      string      `json:"invoice_number"`
 	Items              []OrderItem `json:"items"`
@@ -38,6 +40,8 @@ type CreateOrderRequest struct {
 
 type OrderResponse struct {
 	ID              string      `json:"id"`
+	PaymentGroupID  string      `json:"payment_group_id,omitempty"`
+	ShopID          string      `json:"shop_id,omitempty"`
 	UserID          string      `json:"user_id"`
 	InvoiceNumber   string      `json:"invoice_number"`
 	Items           []OrderItem `json:"items"`

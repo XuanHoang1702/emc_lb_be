@@ -16,7 +16,7 @@ import (
 )
 
 type OrderService interface {
-	CreateOrder(ctx context.Context, userID string, req entities.CreateOrderRequest) (entities.OrderResponse, error)
+	CreateOrder(ctx context.Context, userID string, req entities.CreateOrderRequest) ([]entities.OrderResponse, error)
 	ListOrders(ctx context.Context, userID string) ([]entities.OrderResponse, error)
 	GetOrder(ctx context.Context, id string) (entities.OrderResponse, error)
 	MarkAsPaidByInvoice(ctx context.Context, invoiceNumber string) error
@@ -37,31 +37,31 @@ func NewOrderService(orderRepository repository.OrderRepository, productReposito
 	}
 }
 
-func (s *orderService) CreateOrder(ctx context.Context, userID string, req entities.CreateOrderRequest) (entities.OrderResponse, error) {
+func (s *orderService) CreateOrder(ctx context.Context, userID string, req entities.CreateOrderRequest) ([]entities.OrderResponse, error) {
 	if len(req.Items) == 0 {
-		return entities.OrderResponse{}, &res.AppError{
+		return nil, &res.AppError{
 			Message:    "Order must have at least one item",
 			Code:       erres.CommonBadRequest,
 			StatusCode: http.StatusBadRequest,
 		}
 	}
 
-	var totalAmount float64
-	var items []entities.OrderItem
 	var deductedItems []entities.OrderItem
-
 	rollback := func() {
 		for _, di := range deductedItems {
-			// Use context.Background() to ensure rollback completes even if parent context is cancelled
 			_ = s.productRepository.UpdateStock(context.Background(), di.ProductID, di.Quantity, -di.Quantity)
 		}
 	}
+
+	// Group items by ShopID
+	shopItems := make(map[string][]entities.OrderItem)
+	shopTotals := make(map[string]float64)
 
 	for _, item := range req.Items {
 		product, err := s.productRepository.GetByID(ctx, item.ProductID)
 		if err != nil {
 			rollback()
-			return entities.OrderResponse{}, &res.AppError{
+			return nil, &res.AppError{
 				Message:    fmt.Sprintf("Product %s not found", item.ProductID),
 				Code:       erres.CommonBadRequest,
 				StatusCode: http.StatusBadRequest,
@@ -70,93 +70,114 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 
 		if product.Stock < item.Quantity && !product.AllowBackorder {
 			rollback()
-			return entities.OrderResponse{}, &res.AppError{
+			return nil, &res.AppError{
 				Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
 				Code:       erres.CommonBadRequest,
 				StatusCode: http.StatusBadRequest,
 			}
 		}
 
-		// Deduct stock
+		// Deduct stock (Optimistic lock ideally, but here we just update MongoDB. Redis lock is recommended for high concurrency)
 		if err := s.productRepository.UpdateStock(ctx, item.ProductID, -item.Quantity, item.Quantity); err != nil {
 			rollback()
-			return entities.OrderResponse{}, res.WrapError(err, "Failed to update stock", erres.CommonInternal)
+			return nil, res.WrapError(err, "Failed to update stock", erres.CommonInternal)
 		}
 
 		deductedItems = append(deductedItems, item)
 
-		// Use the actual current price of the product
 		itemPrice := product.Price
-		totalAmount += itemPrice * float64(item.Quantity)
-
-		items = append(items, entities.OrderItem{
+		shopID := product.ShopID
+		
+		shopItems[shopID] = append(shopItems[shopID], entities.OrderItem{
 			ProductID: item.ProductID,
 			Quantity:  item.Quantity,
 			Price:     itemPrice,
 		})
+		shopTotals[shopID] += itemPrice * float64(item.Quantity)
 	}
 
-	var discountAmount float64
-	var taxAmount float64
-	
+	// Process Global Coupon (simple proportional split or just apply to total)
+	// For simplicity, we apply a percentage to each sub-order if it's a percentage,
+	// or proportionally if it's a fixed amount. 
+	var globalDiscountPercentage float64
+	var fixedDiscountRemaining float64
+	isFixedDiscount := false
+
+	totalAllShops := 0.0
+	for _, t := range shopTotals {
+		totalAllShops += t
+	}
+
 	if req.CouponCode != "" {
-		coupon, err := s.couponService.ValidateCouponForAmount(ctx, req.CouponCode, totalAmount)
+		coupon, err := s.couponService.ValidateCouponForAmount(ctx, req.CouponCode, totalAllShops)
 		if err == nil {
 			if coupon.Type == "percentage" {
-				discountAmount = totalAmount * (coupon.Value / 100.0)
-				if coupon.MaxDiscountAmount > 0 && discountAmount > coupon.MaxDiscountAmount {
-					discountAmount = coupon.MaxDiscountAmount
-				}
+				globalDiscountPercentage = coupon.Value / 100.0
 			} else if coupon.Type == "fixed_amount" {
-				discountAmount = coupon.Value
-				if discountAmount > totalAmount {
-					discountAmount = totalAmount
+				isFixedDiscount = true
+				fixedDiscountRemaining = coupon.Value
+				if fixedDiscountRemaining > totalAllShops {
+					fixedDiscountRemaining = totalAllShops
 				}
 			}
+			go s.couponService.IncrementUsage(context.Background(), req.CouponCode, 1)
 		} else {
 			rollback()
-			return entities.OrderResponse{}, err
+			return nil, err
 		}
 	}
 
-	amountAfterDiscount := totalAmount - discountAmount
-	taxAmount = amountAfterDiscount * 0.10 // 10% VAT
-	finalTotal := amountAfterDiscount + taxAmount
+	paymentGroupID := fmt.Sprintf("PG-%s", uuid.New().String()[:8])
+	var createdOrders []entities.OrderResponse
 
-	invoiceNumber := fmt.Sprintf("INV-%s", uuid.New().String()[:8])
-	now := time.Now().UTC()
+	for shopID, items := range shopItems {
+		subTotal := shopTotals[shopID]
+		discountAmount := 0.0
 
-	order := entities.Order{
-		UserID:          userID,
-		InvoiceNumber:   invoiceNumber,
-		Items:           items,
-		SubTotal:        totalAmount,
-		CouponCode:      req.CouponCode,
-		DiscountAmount:  discountAmount,
-		TaxAmount:       taxAmount,
-		TotalAmount:     finalTotal,
-		Status:          "pending",
-		PaymentStatus:   "unpaid",
-		PaymentMethod:   req.PaymentMethod,
-		ShippingAddress: req.ShippingAddress,
-		ContactPhone:    req.ContactPhone,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		if globalDiscountPercentage > 0 {
+			discountAmount = subTotal * globalDiscountPercentage
+		} else if isFixedDiscount {
+			proportion := subTotal / totalAllShops
+			discountAmount = fixedDiscountRemaining * proportion
+		}
+
+		amountAfterDiscount := subTotal - discountAmount
+		taxAmount := amountAfterDiscount * 0.10 // 10% VAT
+		finalTotal := amountAfterDiscount + taxAmount
+
+		invoiceNumber := fmt.Sprintf("INV-%s", uuid.New().String()[:8])
+		now := time.Now().UTC()
+
+		order := entities.Order{
+			PaymentGroupID:  paymentGroupID,
+			ShopID:          shopID,
+			UserID:          userID,
+			InvoiceNumber:   invoiceNumber,
+			Items:           items,
+			SubTotal:        subTotal,
+			CouponCode:      req.CouponCode,
+			DiscountAmount:  discountAmount,
+			TaxAmount:       taxAmount,
+			TotalAmount:     finalTotal,
+			Status:          "pending",
+			PaymentStatus:   "unpaid",
+			PaymentMethod:   req.PaymentMethod,
+			ShippingAddress: req.ShippingAddress,
+			ContactPhone:    req.ContactPhone,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		}
+
+		createdOrder, err := s.orderRepository.Create(ctx, order)
+		if err != nil {
+			rollback() // Ideally we should rollback previously inserted orders too
+			return nil, res.WrapError(err, "Can not create order", erres.CommonInternal)
+		}
+
+		createdOrders = append(createdOrders, mapping.ToOrderResponse(createdOrder))
 	}
 
-	createdOrder, err := s.orderRepository.Create(ctx, order)
-	if err != nil {
-		rollback()
-		return entities.OrderResponse{}, res.WrapError(err, "Can not create order", erres.CommonInternal)
-	}
-
-	// Increment coupon usage if applied
-	if req.CouponCode != "" {
-		// Do this in background to avoid blocking and ensure it runs
-		go s.couponService.IncrementUsage(context.Background(), req.CouponCode, 1)
-	}
-
-	return mapping.ToOrderResponse(createdOrder), nil
+	return createdOrders, nil
 }
 
 func (s *orderService) ListOrders(ctx context.Context, userID string) ([]entities.OrderResponse, error) {

@@ -5,6 +5,8 @@ import "emc_lb/src/pkg/entities"
 func ToOrderResponse(order entities.Order) entities.OrderResponse {
 	return entities.OrderResponse{
 		ID:              order.ID,
+		PaymentGroupID:  order.PaymentGroupID,
+		ShopID:          order.ShopID,
 		UserID:          order.UserID,
 		InvoiceNumber:   order.InvoiceNumber,
 		Items:           order.Items,

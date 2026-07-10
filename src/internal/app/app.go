@@ -84,6 +84,7 @@ func New() (*App, error) {
 	emailOTPStore := cache.NewRedisEmailOTPStore(redisClient)
 	mailer := mail.NewSMTPMailer()
 	userModule := module.NewUserModule(queries, refreshTokenStore, emailOTPStore, mailer, avatarStorage)
+	shopModule := module.NewShopModule(mongoClient.Database(utils.GetMongoDatabaseName()))
 	productModule := module.NewProductModule(mongoClient.Database(utils.GetMongoDatabaseName()))
 	categoryModule, err := module.NewCategoryModule(mongoClient.Database(utils.GetMongoDatabaseName()))
 	//=================================================================================================
@@ -109,6 +110,7 @@ func New() (*App, error) {
 
 	route.RegisterRoutes(router, []route.Route{
 		userModule.Routes(),
+		shopModule.Routes(),
 		productModule.Routes(),
 		categoryModule.Routes(),
 		brandModule.Routes(),

@@ -5,7 +5,8 @@ import (
 )
 
 type Product struct {
-	ID string `json:"id"`
+	ID     string `json:"id"`
+	ShopID string `json:"shop_id"`
 
 	// Basic Information
 	Name        string `json:"name"`
@@ -78,6 +79,7 @@ type CreateProductRequest struct {
 	IsFeatured     bool     `json:"is_featured"`
 	CategoryID     string   `json:"category_id" binding:"omitempty"`
 	BrandID        string   `json:"brand_id" binding:"omitempty"`
+	ShopID         string   `json:"shop_id" binding:"omitempty"`
 }
 
 type UpdateProductRequest struct {
@@ -97,10 +99,12 @@ type UpdateProductRequest struct {
 	IsFeatured     *bool     `json:"is_featured"`
 	CategoryID     *string   `json:"category_id" binding:"omitempty"`
 	BrandID        *string   `json:"brand_id" binding:"omitempty"`
+	ShopID         *string   `json:"shop_id" binding:"omitempty"`
 }
 
 type ProductResponse struct {
 	ID             string    `json:"id"`
+	ShopID         string    `json:"shop_id,omitempty"`
 	Name           string    `json:"name"`
 	Slug           string    `json:"slug"`
 	Description    string    `json:"description,omitempty"`
