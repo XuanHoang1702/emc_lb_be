@@ -104,7 +104,7 @@ func New() (*App, error) {
 	}
 
 	couponModule := module.NewCouponModule(mongoClient.Database(utils.GetMongoDatabaseName()))
-	orderModule := module.NewOrderModule(mongoClient.Database(utils.GetMongoDatabaseName()), couponModule.ServiceInstance())
+	orderModule := module.NewOrderModule(mongoClient.Database(utils.GetMongoDatabaseName()), couponModule.ServiceInstance(), redisClient)
 	paymentModule := module.NewPaymentModule(orderModule.Service())
 	cartModule := module.NewCartModule(mongoClient.Database(utils.GetMongoDatabaseName()), productModule.Repository(), couponModule.ServiceInstance())
 

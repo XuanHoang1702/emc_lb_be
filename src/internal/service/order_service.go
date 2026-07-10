@@ -13,7 +13,25 @@ import (
 	"emc_lb/src/pkg/res"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
+
+var reserveStockScript = redis.NewScript(`
+local stock_key = KEYS[1]
+local qty = tonumber(ARGV[1])
+local current = redis.call('GET', stock_key)
+
+if current == false then
+	return -1 -- Not found in Redis (cache miss)
+end
+
+if tonumber(current) >= qty then
+	redis.call('DECRBY', stock_key, qty)
+	return 1 -- Success
+else
+	return -2 -- Insufficient stock
+end
+`)
 
 type OrderService interface {
 	CreateOrder(ctx context.Context, userID string, req entities.CreateOrderRequest) ([]entities.OrderResponse, error)
@@ -27,13 +45,15 @@ type orderService struct {
 	orderRepository   repository.OrderRepository
 	productRepository repository.ProductRepository
 	couponService     CouponService
+	redisClient       *redis.Client
 }
 
-func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, couponSvc CouponService) OrderService {
+func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, couponSvc CouponService, redisClient *redis.Client) OrderService {
 	return &orderService{
 		orderRepository:   orderRepository,
 		productRepository: productRepository,
 		couponService:     couponSvc,
+		redisClient:       redisClient,
 	}
 }
 
@@ -49,6 +69,10 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 	var deductedItems []entities.OrderItem
 	rollback := func() {
 		for _, di := range deductedItems {
+			stockKey := fmt.Sprintf("product_stock:%s", di.ProductID)
+			if s.redisClient != nil {
+				s.redisClient.IncrBy(context.Background(), stockKey, int64(di.Quantity))
+			}
 			_ = s.productRepository.UpdateStock(context.Background(), di.ProductID, di.Quantity, -di.Quantity)
 		}
 	}
@@ -68,19 +92,54 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 			}
 		}
 
-		if product.Stock < item.Quantity && !product.AllowBackorder {
-			rollback()
-			return nil, &res.AppError{
-				Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
-				Code:       erres.CommonBadRequest,
-				StatusCode: http.StatusBadRequest,
+		if !product.AllowBackorder {
+			stockKey := fmt.Sprintf("product_stock:%s", item.ProductID)
+			
+			// 1. Try to deduct from Redis
+			if s.redisClient != nil {
+				resVal, err := reserveStockScript.Run(ctx, s.redisClient, []string{stockKey}, item.Quantity).Int()
+				
+				// Cache miss: sync from DB to Redis and retry
+				if err == nil && resVal == -1 {
+					s.redisClient.Set(ctx, stockKey, product.Stock, 1*time.Hour)
+					resVal, err = reserveStockScript.Run(ctx, s.redisClient, []string{stockKey}, item.Quantity).Int()
+				}
+				
+				if err != nil {
+					rollback()
+					return nil, res.WrapError(err, "Failed to reserve stock in Redis", erres.CommonInternal)
+				}
+				
+				if resVal == -2 {
+					rollback()
+					return nil, &res.AppError{
+						Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
+						Code:       erres.CommonBadRequest,
+						StatusCode: http.StatusBadRequest,
+					}
+				}
+			} else {
+				// Fallback to strict DB check if Redis is disabled
+				if product.Stock < item.Quantity {
+					rollback()
+					return nil, &res.AppError{
+						Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
+						Code:       erres.CommonBadRequest,
+						StatusCode: http.StatusBadRequest,
+					}
+				}
 			}
 		}
 
-		// Deduct stock (Optimistic lock ideally, but here we just update MongoDB. Redis lock is recommended for high concurrency)
+		// 2. Persist deduction in MongoDB
 		if err := s.productRepository.UpdateStock(ctx, item.ProductID, -item.Quantity, item.Quantity); err != nil {
+			// Rollback this current item from Redis since Mongo failed
+			if s.redisClient != nil && !product.AllowBackorder {
+				stockKey := fmt.Sprintf("product_stock:%s", item.ProductID)
+				s.redisClient.IncrBy(context.Background(), stockKey, int64(item.Quantity))
+			}
 			rollback()
-			return nil, res.WrapError(err, "Failed to update stock", erres.CommonInternal)
+			return nil, res.WrapError(err, "Failed to update stock in DB", erres.CommonInternal)
 		}
 
 		deductedItems = append(deductedItems, item)

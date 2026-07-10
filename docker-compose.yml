@@ -53,6 +53,70 @@ services:
     networks:
       - emc-network
 
+  emc_api_node_1:
+    build: .
+    restart: always
+    env_file: .env
+    environment:
+      APP_PORT: 8080
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      LOCALSTACK_ENDPOINT: http://localstack:4566
+    depends_on:
+      - postgres
+      - mongo
+      - redis
+    networks:
+      - emc-network
+
+  emc_api_node_2:
+    build: .
+    restart: always
+    env_file: .env
+    environment:
+      APP_PORT: 8080
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      LOCALSTACK_ENDPOINT: http://localstack:4566
+    depends_on:
+      - postgres
+      - mongo
+      - redis
+    networks:
+      - emc-network
+
+  emc_api_node_3:
+    build: .
+    restart: always
+    env_file: .env
+    environment:
+      APP_PORT: 8080
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      LOCALSTACK_ENDPOINT: http://localstack:4566
+    depends_on:
+      - postgres
+      - mongo
+      - redis
+    networks:
+      - emc-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - emc_api_node_1
+      - emc_api_node_2
+      - emc_api_node_3
+    networks:
+      - emc-network
+
 volumes:
   pgdata:
   mongodata:
