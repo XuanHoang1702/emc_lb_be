@@ -75,7 +75,7 @@ func New() (*App, error) {
 	}
 
 	router := gin.New()
-	router.Use(middleware.RequestLogMiddleware(), middleware.AcceptLanguageMiddleware(), gin.Recovery())
+	router.Use(middleware.CORSMiddleware(), middleware.RequestLogMiddleware(), middleware.AcceptLanguageMiddleware(), gin.Recovery())
 
 	// MODULES
 	queries := sqlc.New(logs.WrapDBTX(pgPool))
