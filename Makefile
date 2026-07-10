@@ -3,7 +3,7 @@ SHELL := bash
 MIGRATE_DIR := src/internal/db/migrations
 MIGRATE_URL := postgres://postgres:postgres@localhost:5432/emc_lb?sslmode=disable
 
-.PHONY: help dev run sqlc docker-up docker-down migrate-create migrate-up migrate-down migrate-version clean
+.PHONY: help dev run build lint sqlc swag docker-up docker-down migrate-create migrate-up migrate-down migrate-version clean
 
 help:
 	@echo "Available targets:"
@@ -22,11 +22,20 @@ dev:
 	air -c .air.toml
 
 run:
-	go build ./src/cmd/server
-	go run ./src/cmd/server
+	go build -o tmp_server ./src/cmd/server
+	./tmp_server
+
+build:
+	go build -v ./...
+
+lint:
+	golangci-lint run ./...
 
 sqlc:
 	sqlc generate
+
+swag:
+	go run github.com/swaggo/swag/cmd/swag@latest init -g src/cmd/server/main.go -o src/docs
 
 docker-up:
 	docker compose up -d

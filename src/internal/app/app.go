@@ -116,7 +116,7 @@ func New() (*App, error) {
 		paymentModule.Routes(),
 		cartModule.Route,
 		couponModule.Routes(),
-	})
+	}, redisClient, pgPool, mongoClient)
 
 	server := &http.Server{
 		Addr:              ":" + utils.GetEnv("APP_PORT", "8080"),

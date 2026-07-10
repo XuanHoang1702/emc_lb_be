@@ -33,6 +33,9 @@ var messages = map[string]map[string]string{
 		"success_category_deleted": "Category deleted successfully",
 		"success_brand_deleted":    "Brand deleted successfully",
 		"err_internal_server":      "Internal server error",
+		"err_too_many_requests":    "You have sent too many requests, please try again later.",
+		"err_unauthorized_role":    "Unauthorized: Invalid role",
+		"err_forbidden_resource":   "Forbidden: You do not have permission to access this resource",
 
 		// Coupon & Cart & Order messages
 		"Coupon code already exists":                                     "Coupon code already exists",
@@ -71,6 +74,9 @@ var messages = map[string]map[string]string{
 		"success_category_deleted": "Xóa danh mục thành công",
 		"success_brand_deleted":    "Xóa thương hiệu thành công",
 		"err_internal_server":      "Lỗi hệ thống nội bộ",
+		"err_too_many_requests":    "Bạn đã gửi quá nhiều yêu cầu, vui lòng thử lại sau.",
+		"err_unauthorized_role":    "Không có quyền: Role không hợp lệ",
+		"err_forbidden_resource":   "Từ chối truy cập: Bạn không có quyền thao tác tài nguyên này",
 
 		// Coupon & Cart & Order messages
 		"Coupon code already exists":                                     "Mã giảm giá đã tồn tại",

@@ -1,0 +1,47 @@
+run:
+  timeout: 5m
+  tests: false
+  skip-dirs:
+    - src/docs
+
+linters-settings:
+  govet:
+    check-shadowing: true
+  gocyclo:
+    min-complexity: 15
+  maligned:
+    suggest-new: true
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 2
+    min-occurrences: 2
+  revive:
+    rules:
+      - name: exported
+        disabled: false
+      - name: var-naming
+        disabled: false
+      - name: unexported-return
+        disabled: false
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    - gocyclo
+    - gofmt
+    - goimports
+    - misspell
+    - revive
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -26,7 +26,7 @@ func RequirePermission(permissionCode string) gin.HandlerFunc {
 		roleStr, ok := role.(string)
 		if !ok || roleStr == "" {
 			res.Error(ctx, &res.AppError{
-				Message:    "Unauthorized: Invalid role",
+				Message:    "err_unauthorized_role",
 				Code:       errors.UserUnauthorized,
 				StatusCode: http.StatusUnauthorized,
 			})
@@ -37,7 +37,7 @@ func RequirePermission(permissionCode string) gin.HandlerFunc {
 		rbacManager := auth.GetRBACManager()
 		if !rbacManager.HasPermission(roleStr, permissionCode) {
 			res.Error(ctx, &res.AppError{
-				Message:    "Forbidden: You do not have permission to access this resource",
+				Message:    "err_forbidden_resource",
 				Code:       "FORBIDDEN",
 				StatusCode: http.StatusForbidden,
 			})
