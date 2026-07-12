@@ -1,52 +1,53 @@
-package service
+package service_test
 
 import (
 	"context"
 	"net/http"
 	"testing"
 
+	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/entities"
 	"emc_lb/src/pkg/res"
 )
 
 // stubOrderSvc for payment testing
-type stubOrderSvc struct {
+type stubPaymentOrderSvc struct {
 	markAsPaidFn func(invoiceNumber string) error
 }
 
-func (s *stubOrderSvc) CreateOrder(_ context.Context, _ string, _ entities.CreateOrderRequest) ([]entities.OrderResponse, error) {
+func (s *stubPaymentOrderSvc) CreateOrder(_ context.Context, _ string, _ entities.CreateOrderRequest) ([]entities.OrderResponse, error) {
 	return nil, nil
 }
 
-func (s *stubOrderSvc) ListOrders(_ context.Context, _ string) ([]entities.OrderResponse, error) {
+func (s *stubPaymentOrderSvc) ListOrders(_ context.Context, _ string) ([]entities.OrderResponse, error) {
 	return nil, nil
 }
 
-func (s *stubOrderSvc) GetOrder(_ context.Context, _ string) (entities.OrderResponse, error) {
+func (s *stubPaymentOrderSvc) GetOrder(_ context.Context, _ string) (entities.OrderResponse, error) {
 	return entities.OrderResponse{}, nil
 }
 
-func (s *stubOrderSvc) MarkAsPaidByInvoice(_ context.Context, invoiceNumber string) error {
+func (s *stubPaymentOrderSvc) MarkAsPaidByInvoice(_ context.Context, invoiceNumber string) error {
 	if s.markAsPaidFn != nil {
 		return s.markAsPaidFn(invoiceNumber)
 	}
 	return nil
 }
 
-func (s *stubOrderSvc) UpdateOrderStatus(_ context.Context, _ string, _ string) error {
+func (s *stubPaymentOrderSvc) UpdateOrderStatus(_ context.Context, _ string, _ string) error {
 	return nil
 }
 
 func TestProcessIPN_OrderPaid(t *testing.T) {
 	var markedInvoice string
-	orderSvc := &stubOrderSvc{
+	orderSvc := &stubPaymentOrderSvc{
 		markAsPaidFn: func(inv string) error {
 			markedInvoice = inv
 			return nil
 		},
 	}
 
-	svc := NewPaymentService(orderSvc)
+	svc := service.NewPaymentService(orderSvc)
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
 		NotificationType: "ORDER_PAID",
@@ -69,7 +70,7 @@ func TestProcessIPN_OrderPaid(t *testing.T) {
 }
 
 func TestProcessIPN_IgnoreNonOrderPaid(t *testing.T) {
-	svc := NewPaymentService(&stubOrderSvc{})
+	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
 		NotificationType: "ORDER_CREATED",
@@ -80,7 +81,7 @@ func TestProcessIPN_IgnoreNonOrderPaid(t *testing.T) {
 }
 
 func TestProcessIPN_IgnoreNonCaptured(t *testing.T) {
-	svc := NewPaymentService(&stubOrderSvc{})
+	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
 		NotificationType: "ORDER_PAID",
@@ -94,7 +95,7 @@ func TestProcessIPN_IgnoreNonCaptured(t *testing.T) {
 }
 
 func TestProcessIPN_MissingInvoice(t *testing.T) {
-	svc := NewPaymentService(&stubOrderSvc{})
+	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
 		NotificationType: "ORDER_PAID",
@@ -117,7 +118,7 @@ func TestProcessIPN_MissingInvoice(t *testing.T) {
 
 func TestInitCheckout_MissingConfig(t *testing.T) {
 	// NewPaymentService reads from env; with no env set, merchant/secret are empty
-	svc := NewPaymentService(&stubOrderSvc{})
+	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
 
 	_, err := svc.InitCheckout(context.Background(), entities.CheckoutInitRequest{
 		OrderAmount:        500000,

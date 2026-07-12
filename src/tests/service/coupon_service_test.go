@@ -1,4 +1,4 @@
-package service
+package service_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/entities"
 )
 
@@ -88,7 +89,7 @@ func TestValidateCouponForAmount_Success(t *testing.T) {
 	repo := newStubCouponRepo()
 	c := validCoupon()
 	repo.coupons[c.Code] = c
-	svc := NewCouponService(repo)
+	svc := service.NewCouponService(repo)
 
 	result, err := svc.ValidateCouponForAmount(context.Background(), "SAVE10", 200)
 	if err != nil {
@@ -105,7 +106,7 @@ func TestValidateCouponForAmount_Expired(t *testing.T) {
 	c.StartDate = time.Now().Add(-48 * time.Hour)
 	c.EndDate = time.Now().Add(-24 * time.Hour) // expired yesterday
 	repo.coupons[c.Code] = c
-	svc := NewCouponService(repo)
+	svc := service.NewCouponService(repo)
 
 	_, err := svc.ValidateCouponForAmount(context.Background(), "SAVE10", 200)
 	if err == nil {
@@ -118,7 +119,7 @@ func TestValidateCouponForAmount_Inactive(t *testing.T) {
 	c := validCoupon()
 	c.IsActive = false
 	repo.coupons[c.Code] = c
-	svc := NewCouponService(repo)
+	svc := service.NewCouponService(repo)
 
 	_, err := svc.ValidateCouponForAmount(context.Background(), "SAVE10", 200)
 	if err == nil {
@@ -132,7 +133,7 @@ func TestValidateCouponForAmount_UsageLimitExceeded(t *testing.T) {
 	c.UsageLimit = 5
 	c.UsageCount = 5
 	repo.coupons[c.Code] = c
-	svc := NewCouponService(repo)
+	svc := service.NewCouponService(repo)
 
 	_, err := svc.ValidateCouponForAmount(context.Background(), "SAVE10", 200)
 	if err == nil {
@@ -145,7 +146,7 @@ func TestValidateCouponForAmount_BelowMinOrder(t *testing.T) {
 	c := validCoupon()
 	c.MinOrderAmount = 500
 	repo.coupons[c.Code] = c
-	svc := NewCouponService(repo)
+	svc := service.NewCouponService(repo)
 
 	_, err := svc.ValidateCouponForAmount(context.Background(), "SAVE10", 200)
 	if err == nil {
@@ -157,7 +158,7 @@ func TestCreate_DuplicateCode(t *testing.T) {
 	repo := newStubCouponRepo()
 	c := validCoupon()
 	repo.coupons[c.Code] = c
-	svc := NewCouponService(repo)
+	svc := service.NewCouponService(repo)
 
 	_, err := svc.Create(context.Background(), entities.CreateCouponRequest{
 		Code:  "SAVE10",
@@ -171,7 +172,7 @@ func TestCreate_DuplicateCode(t *testing.T) {
 
 func TestValidateCouponForAmount_InvalidCode(t *testing.T) {
 	repo := newStubCouponRepo()
-	svc := NewCouponService(repo)
+	svc := service.NewCouponService(repo)
 
 	_, err := svc.ValidateCouponForAmount(context.Background(), "NONEXISTENT", 200)
 	if err == nil {

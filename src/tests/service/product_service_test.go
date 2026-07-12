@@ -1,4 +1,4 @@
-package service
+package service_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/entities"
 )
 
@@ -103,7 +104,7 @@ type stubBrandRepo struct{}
 func (r *stubBrandRepo) Create(_ context.Context, _ entities.Brand) (entities.Brand, error) {
 	return entities.Brand{}, nil
 }
-func (r *stubBrandRepo) List(_ context.Context) ([]entities.Brand, error)  { return nil, nil }
+func (r *stubBrandRepo) List(_ context.Context) ([]entities.Brand, error) { return nil, nil }
 func (r *stubBrandRepo) GetByID(_ context.Context, _ string) (entities.Brand, error) {
 	return entities.Brand{}, nil
 }
@@ -194,7 +195,7 @@ func TestList_CacheHit(t *testing.T) {
 	cacheStore := newStubProductCache()
 	cacheStore.listData = []entities.ProductResponse{{ID: "p1", Name: "Cached Product"}}
 
-	svc := NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
+	svc := service.NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
 
 	result, err := svc.List(context.Background())
 	if err != nil {
@@ -215,7 +216,7 @@ func TestList_CacheMiss(t *testing.T) {
 
 	cacheStore := newStubProductCache() // empty = miss
 
-	svc := NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
+	svc := service.NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
 
 	result, err := svc.List(context.Background())
 	if err != nil {
@@ -233,7 +234,7 @@ func TestGetByID_CacheHit(t *testing.T) {
 	cacheStore := newStubProductCache()
 	cacheStore.itemData["p1"] = entities.ProductResponse{ID: "p1", Name: "Cached Item"}
 
-	svc := NewProductService(newListableProductRepo(), &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
+	svc := service.NewProductService(newListableProductRepo(), &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
 
 	result, err := svc.GetByID(context.Background(), "p1")
 	if err != nil {
@@ -248,7 +249,7 @@ func TestCreate_InvalidatesCache(t *testing.T) {
 	cacheStore := newStubProductCache()
 	cacheStore.listData = []entities.ProductResponse{{ID: "old", Name: "Old"}}
 
-	svc := NewProductService(newListableProductRepo(), &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
+	svc := service.NewProductService(newListableProductRepo(), &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
 
 	_, err := svc.Create(context.Background(), entities.CreateProductRequest{
 		Name:   "New Product",
@@ -271,7 +272,7 @@ func TestUpdate_InvalidatesCache(t *testing.T) {
 	cacheStore := newStubProductCache()
 	cacheStore.itemData["p1"] = entities.ProductResponse{ID: "p1", Name: "Old Name"}
 
-	svc := NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
+	svc := service.NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
 
 	newName := "New Name"
 	_, err := svc.Update(context.Background(), "p1", entities.UpdateProductRequest{Name: &newName})
@@ -289,7 +290,7 @@ func TestDelete_InvalidatesCache(t *testing.T) {
 
 	cacheStore := newStubProductCache()
 
-	svc := NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
+	svc := service.NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
 
 	err := svc.Delete(context.Background(), "p1")
 	if err != nil {
