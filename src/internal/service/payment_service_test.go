@@ -1,0 +1,129 @@
+package service
+
+import (
+	"context"
+	"net/http"
+	"testing"
+
+	"emc_lb/src/pkg/entities"
+	"emc_lb/src/pkg/res"
+)
+
+// stubOrderSvc for payment testing
+type stubOrderSvc struct {
+	markAsPaidFn func(invoiceNumber string) error
+}
+
+func (s *stubOrderSvc) CreateOrder(_ context.Context, _ string, _ entities.CreateOrderRequest) ([]entities.OrderResponse, error) {
+	return nil, nil
+}
+
+func (s *stubOrderSvc) ListOrders(_ context.Context, _ string) ([]entities.OrderResponse, error) {
+	return nil, nil
+}
+
+func (s *stubOrderSvc) GetOrder(_ context.Context, _ string) (entities.OrderResponse, error) {
+	return entities.OrderResponse{}, nil
+}
+
+func (s *stubOrderSvc) MarkAsPaidByInvoice(_ context.Context, invoiceNumber string) error {
+	if s.markAsPaidFn != nil {
+		return s.markAsPaidFn(invoiceNumber)
+	}
+	return nil
+}
+
+func (s *stubOrderSvc) UpdateOrderStatus(_ context.Context, _ string, _ string) error {
+	return nil
+}
+
+func TestProcessIPN_OrderPaid(t *testing.T) {
+	var markedInvoice string
+	orderSvc := &stubOrderSvc{
+		markAsPaidFn: func(inv string) error {
+			markedInvoice = inv
+			return nil
+		},
+	}
+
+	svc := NewPaymentService(orderSvc)
+
+	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
+		NotificationType: "ORDER_PAID",
+		Order: entities.SePayIPNOrder{
+			OrderStatus:        "CAPTURED",
+			OrderInvoiceNumber: "INV-12345",
+			OrderAmount:        "500000",
+		},
+		Transaction: entities.SePayIPNTx{
+			PaymentMethod: "BANK_TRANSFER",
+		},
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if markedInvoice != "INV-12345" {
+		t.Fatalf("expected invoice INV-12345 to be marked as paid, got %s", markedInvoice)
+	}
+}
+
+func TestProcessIPN_IgnoreNonOrderPaid(t *testing.T) {
+	svc := NewPaymentService(&stubOrderSvc{})
+
+	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
+		NotificationType: "ORDER_CREATED",
+	})
+	if err != nil {
+		t.Fatalf("expected no error for non ORDER_PAID notification, got %v", err)
+	}
+}
+
+func TestProcessIPN_IgnoreNonCaptured(t *testing.T) {
+	svc := NewPaymentService(&stubOrderSvc{})
+
+	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
+		NotificationType: "ORDER_PAID",
+		Order: entities.SePayIPNOrder{
+			OrderStatus: "PENDING",
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected no error for non CAPTURED status, got %v", err)
+	}
+}
+
+func TestProcessIPN_MissingInvoice(t *testing.T) {
+	svc := NewPaymentService(&stubOrderSvc{})
+
+	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
+		NotificationType: "ORDER_PAID",
+		Order: entities.SePayIPNOrder{
+			OrderStatus:        "CAPTURED",
+			OrderInvoiceNumber: "",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for missing invoice number")
+	}
+	appErr, ok := err.(*res.AppError)
+	if !ok {
+		t.Fatal("expected AppError")
+	}
+	if appErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", appErr.StatusCode)
+	}
+}
+
+func TestInitCheckout_MissingConfig(t *testing.T) {
+	// NewPaymentService reads from env; with no env set, merchant/secret are empty
+	svc := NewPaymentService(&stubOrderSvc{})
+
+	_, err := svc.InitCheckout(context.Background(), entities.CheckoutInitRequest{
+		OrderAmount:        500000,
+		OrderInvoiceNumber: "INV-1",
+	})
+	if err == nil {
+		t.Fatal("expected error when payment gateway not configured")
+	}
+}

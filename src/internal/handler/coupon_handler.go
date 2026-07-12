@@ -20,6 +20,18 @@ func NewCouponHandler(couponService service.CouponService) *CouponHandler {
 	return &CouponHandler{couponService: couponService}
 }
 
+// HandleCreate godoc
+// @Summary      Create coupon
+// @Description  Create a new discount coupon (requires coupon:create permission)
+// @Tags         Coupons
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.CreateCouponRequest true "Coupon details"
+// @Success      201  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/coupons [post]
 func (h *CouponHandler) HandleCreate(ctx *gin.Context) {
 	var req entities.CreateCouponRequest
 	if err := validation.BindJSON(ctx, &req, erres.CommonBadRequest); err != nil {
@@ -36,6 +48,15 @@ func (h *CouponHandler) HandleCreate(ctx *gin.Context) {
 	res.Success(ctx, http.StatusCreated, coupon)
 }
 
+// HandleList godoc
+// @Summary      List coupons
+// @Description  Get all coupons (requires coupon:read permission)
+// @Tags         Coupons
+// @Produce      json
+// @Success      200  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/coupons [get]
 func (h *CouponHandler) HandleList(ctx *gin.Context) {
 	coupons, err := h.couponService.List(ctx.Request.Context())
 	if err != nil {
@@ -46,6 +67,17 @@ func (h *CouponHandler) HandleList(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, coupons)
 }
 
+// HandleGet godoc
+// @Summary      Get coupon by code
+// @Description  Get a single coupon by its code (requires coupon:read permission)
+// @Tags         Coupons
+// @Produce      json
+// @Param        code path      string  true  "Coupon code"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      404  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/coupons/{code} [get]
 func (h *CouponHandler) HandleGet(ctx *gin.Context) {
 	code := ctx.Param("code")
 	if code == "" {
@@ -66,6 +98,19 @@ func (h *CouponHandler) HandleGet(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, coupon)
 }
 
+// HandleUpdate godoc
+// @Summary      Update coupon
+// @Description  Update an existing coupon (requires coupon:update permission)
+// @Tags         Coupons
+// @Accept       json
+// @Produce      json
+// @Param        id   path      string  true  "Coupon ID"
+// @Param        body body entities.UpdateCouponRequest true "Fields to update"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/coupons/{id} [patch]
 func (h *CouponHandler) HandleUpdate(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {

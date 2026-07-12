@@ -1,7 +1,7 @@
 ---
 type: reference
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-07-12
 ---
 
 # Skills Catalog
@@ -50,7 +50,7 @@ Danh sách toàn bộ skills có sẵn trong `.agents/skills/`. Dùng để tra 
 | `code-review-checklist` | Code review: quality, security, best practices |
 | `code-review-graph` | Token-efficient review dùng AST graph + SQLite |
 | `verify-changes` | Prove code works by running it |
-| `lint-and-validate` | Linting & validation patterns |
+| `lint-and-validate` | Auto quality control, linting, static analysis — sau mỗi code modification |
 
 ## 🚀 DevOps & Deployment
 

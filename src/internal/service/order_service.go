@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"emc_lb/src/internal/repository"
+	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/mapping"
@@ -46,14 +47,16 @@ type orderService struct {
 	productRepository repository.ProductRepository
 	couponService     CouponService
 	redisClient       *redis.Client
+	productCache      cache.ProductCacheStore
 }
 
-func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, couponSvc CouponService, redisClient *redis.Client) OrderService {
+func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, couponSvc CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore) OrderService {
 	return &orderService{
 		orderRepository:   orderRepository,
 		productRepository: productRepository,
 		couponService:     couponSvc,
 		redisClient:       redisClient,
+		productCache:      productCache,
 	}
 }
 
@@ -236,6 +239,11 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 		createdOrders = append(createdOrders, mapping.ToOrderResponse(createdOrder))
 	}
 
+	// Invalidate product cache since stock has changed
+	if s.productCache != nil {
+		_ = s.productCache.InvalidateAll(ctx)
+	}
+
 	return createdOrders, nil
 }
 
@@ -317,6 +325,9 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, id string, status 
 		for _, item := range order.Items {
 			// Use context.Background() to avoid cancellation mid-rollback
 			_ = s.productRepository.UpdateStock(context.Background(), item.ProductID, item.Quantity, -item.Quantity)
+		}
+		if s.productCache != nil {
+			_ = s.productCache.InvalidateAll(context.Background())
 		}
 	}
 

@@ -3,12 +3,16 @@ SHELL := bash
 MIGRATE_DIR := src/internal/db/migrations
 MIGRATE_URL := postgres://postgres:postgres@localhost:5432/emc_lb?sslmode=disable
 
-.PHONY: help dev run build lint sqlc swag docker-up docker-down migrate-create migrate-up migrate-down migrate-version clean
+.PHONY: help dev run build lint sqlc swag docker-up docker-down migrate-create migrate-up migrate-down migrate-version clean test test-cover
 
 help:
 	@echo "Available targets:"
 	@echo "  make dev             # run application with air live reload"
 	@echo "  make run             # start application directly"
+	@echo "  make build           # build project"
+	@echo "  make test            # run all unit tests"
+	@echo "  make test-cover      # run tests with HTML coverage report"
+	@echo "  make lint            # run golangci-lint"
 	@echo "  make sqlc            # generate Go types from SQL using sqlc"
 	@echo "  make docker-up       # start Postgres and MongoDB"
 	@echo "  make docker-down     # stop containers"
@@ -58,3 +62,10 @@ migrate-version:
 clean:
 	go clean -cache
 
+test:
+	go test -v -race ./...
+
+test-cover:
+	go test -race -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"

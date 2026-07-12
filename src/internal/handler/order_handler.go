@@ -21,6 +21,18 @@ func NewOrderHandler(orderService service.OrderService) *OrderHandler {
 	return &OrderHandler{orderService: orderService}
 }
 
+// HandleCreate godoc
+// @Summary      Create order
+// @Description  Create a new order from cart items. Orders are split by shop automatically.
+// @Tags         Orders
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.CreateOrderRequest true "Order details with items and optional coupon"
+// @Success      201  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/orders [post]
 func (h *OrderHandler) HandleCreate(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.ContextUserIDKey)
 	if !exists {
@@ -47,6 +59,15 @@ func (h *OrderHandler) HandleCreate(ctx *gin.Context) {
 	res.Success(ctx, http.StatusCreated, "Orders created successfully", orders)
 }
 
+// HandleMyOrders godoc
+// @Summary      List my orders
+// @Description  Get all orders for the authenticated user
+// @Tags         Orders
+// @Produce      json
+// @Success      200  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/orders/my [get]
 func (h *OrderHandler) HandleMyOrders(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.ContextUserIDKey)
 	if !exists {
@@ -67,6 +88,16 @@ func (h *OrderHandler) HandleMyOrders(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, orders)
 }
 
+// HandleGetAllOrders godoc
+// @Summary      List all orders (admin)
+// @Description  Get all orders in the system (requires manage_orders permission)
+// @Tags         Orders
+// @Produce      json
+// @Success      200  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Failure      403  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/orders [get]
 func (h *OrderHandler) HandleGetAllOrders(ctx *gin.Context) {
 	orders, err := h.orderService.ListOrders(ctx.Request.Context(), "")
 	if err != nil {
@@ -77,6 +108,18 @@ func (h *OrderHandler) HandleGetAllOrders(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, orders)
 }
 
+// HandleGetOrder godoc
+// @Summary      Get order by ID
+// @Description  Get a single order by its ID (owner or admin only)
+// @Tags         Orders
+// @Produce      json
+// @Param        id   path      string  true  "Order ID"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      403  {object}  res.APIResponse
+// @Failure      404  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/orders/{id} [get]
 func (h *OrderHandler) HandleGetOrder(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
@@ -110,6 +153,19 @@ func (h *OrderHandler) HandleGetOrder(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, order)
 }
 
+// HandleUpdateStatus godoc
+// @Summary      Update order status
+// @Description  Update an order's status (requires manage_orders permission)
+// @Tags         Orders
+// @Accept       json
+// @Produce      json
+// @Param        id   path      string  true  "Order ID"
+// @Param        body body object true "New status" SchemaExample({"status": "processing"})
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/orders/{id}/status [patch]
 func (h *OrderHandler) HandleUpdateStatus(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {

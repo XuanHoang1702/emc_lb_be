@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"emc_lb/src/internal/repository"
+	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/entities"
 
 	"github.com/google/uuid"
@@ -16,11 +17,12 @@ type ShopService interface {
 }
 
 type shopService struct {
-	shopRepo repository.ShopRepository
+	shopRepo   repository.ShopRepository
+	cacheStore cache.ShopCacheStore
 }
 
-func NewShopService(shopRepo repository.ShopRepository) ShopService {
-	return &shopService{shopRepo: shopRepo}
+func NewShopService(shopRepo repository.ShopRepository, cacheStore cache.ShopCacheStore) ShopService {
+	return &shopService{shopRepo: shopRepo, cacheStore: cacheStore}
 }
 
 func (s *shopService) CreateShop(ctx context.Context, ownerID string, req entities.CreateShopRequest) (entities.ShopResponse, error) {
@@ -45,15 +47,32 @@ func (s *shopService) CreateShop(ctx context.Context, ownerID string, req entiti
 		return entities.ShopResponse{}, err
 	}
 
-	return toShopResponse(createdShop), nil
+	result := toShopResponse(createdShop)
+	if s.cacheStore != nil {
+		_ = s.cacheStore.InvalidateByOwnerID(ctx, ownerID)
+	}
+
+	return result, nil
 }
 
 func (s *shopService) GetShopByOwnerID(ctx context.Context, ownerID string) (entities.ShopResponse, error) {
+	if s.cacheStore != nil {
+		if cached, err := s.cacheStore.GetByOwnerID(ctx, ownerID); err == nil {
+			return cached, nil
+		}
+	}
+
 	shop, err := s.shopRepo.GetByOwnerID(ctx, ownerID)
 	if err != nil {
 		return entities.ShopResponse{}, err
 	}
-	return toShopResponse(shop), nil
+
+	result := toShopResponse(shop)
+	if s.cacheStore != nil {
+		_ = s.cacheStore.SetByOwnerID(ctx, ownerID, result)
+	}
+
+	return result, nil
 }
 
 func toShopResponse(shop entities.Shop) entities.ShopResponse {

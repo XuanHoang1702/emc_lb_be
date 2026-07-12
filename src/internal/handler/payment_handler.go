@@ -20,7 +20,19 @@ func NewPaymentHandler(paymentService service.PaymentService) *PaymentHandler {
 	return &PaymentHandler{paymentService: paymentService}
 }
 
-// HandleInitCheckout initializes a SePay checkout session
+// HandleInitCheckout godoc
+// @Summary      Initialize SePay checkout
+// @Description  Creates a checkout session with SePay Payment Gateway and returns the checkout URL
+// @Tags         Payments
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.CheckoutInitRequest true "Checkout details"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Failure      500  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/payment/checkout [post]
 func (h *PaymentHandler) HandleInitCheckout(ctx *gin.Context) {
 	var req entities.CheckoutInitRequest
 	if err := validation.BindJSON(ctx, &req, errors.UserInvalidFormat); err != nil {
@@ -37,7 +49,16 @@ func (h *PaymentHandler) HandleInitCheckout(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, data)
 }
 
-// HandleSepayIPN handles IPN (Instant Payment Notification) from SePay Payment Gateway
+// HandleSepayIPN godoc
+// @Summary      SePay IPN Webhook
+// @Description  Receives Instant Payment Notification from SePay when payment status changes
+// @Tags         Payments
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.SePayIPNRequest true "IPN payload from SePay"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Router       /api/v1/payment/ipn [post]
 func (h *PaymentHandler) HandleSepayIPN(ctx *gin.Context) {
 	var req entities.SePayIPNRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -58,7 +79,14 @@ func (h *PaymentHandler) HandleSepayIPN(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, "IPN received successfully")
 }
 
-// HandleTestCheckoutLink renders an auto-submitting HTML form for testing checkout via a simple GET link
+// HandleTestCheckoutLink godoc
+// @Summary      Test checkout link
+// @Description  Renders an auto-submitting HTML form that redirects to SePay for testing
+// @Tags         Payments
+// @Produce      html
+// @Success      200  {string}  string "HTML redirect form"
+// @Failure      500  {string}  string "Error message"
+// @Router       /api/v1/payment/test-checkout [get]
 func (h *PaymentHandler) HandleTestCheckoutLink(ctx *gin.Context) {
 	req := entities.CheckoutInitRequest{
 		OrderAmount:        150000,

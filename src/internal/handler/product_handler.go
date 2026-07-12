@@ -20,6 +20,18 @@ func NewProductHandler(productService service.ProductService) *ProductHandler {
 	return &ProductHandler{productService: productService}
 }
 
+// HandleCreate godoc
+// @Summary      Create product
+// @Description  Create a new product (requires product:create permission)
+// @Tags         Products
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.CreateProductRequest true "Product details"
+// @Success      201  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/products [post]
 func (h *ProductHandler) HandleCreate(ctx *gin.Context) {
 	var createRequest entities.CreateProductRequest
 	if err := validation.BindJSON(ctx, &createRequest, erres.CommonBadRequest); err != nil {
@@ -36,6 +48,14 @@ func (h *ProductHandler) HandleCreate(ctx *gin.Context) {
 	res.Success(ctx, http.StatusCreated, product)
 }
 
+// HandleList godoc
+// @Summary      List products
+// @Description  Get all products
+// @Tags         Products
+// @Produce      json
+// @Success      200  {object}  res.APIResponse
+// @Failure      500  {object}  res.APIResponse
+// @Router       /api/v1/products [get]
 func (h *ProductHandler) HandleList(ctx *gin.Context) {
 	products, err := h.productService.List(ctx.Request.Context())
 	if err != nil {
@@ -46,6 +66,16 @@ func (h *ProductHandler) HandleList(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, products)
 }
 
+// HandleGetByID godoc
+// @Summary      Get product by ID
+// @Description  Get a single product by its ID
+// @Tags         Products
+// @Produce      json
+// @Param        id   path      string  true  "Product ID"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      404  {object}  res.APIResponse
+// @Router       /api/v1/products/{id} [get]
 func (h *ProductHandler) HandleGetByID(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
@@ -66,6 +96,19 @@ func (h *ProductHandler) HandleGetByID(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, product)
 }
 
+// HandleUpdate godoc
+// @Summary      Update product
+// @Description  Update an existing product (requires product:update permission)
+// @Tags         Products
+// @Accept       json
+// @Produce      json
+// @Param        id   path      string  true  "Product ID"
+// @Param        body body entities.UpdateProductRequest true "Fields to update"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/products/{id} [patch]
 func (h *ProductHandler) HandleUpdate(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
@@ -92,6 +135,17 @@ func (h *ProductHandler) HandleUpdate(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, product)
 }
 
+// HandleDelete godoc
+// @Summary      Delete product
+// @Description  Soft-delete a product (requires product:delete permission)
+// @Tags         Products
+// @Produce      json
+// @Param        id   path      string  true  "Product ID"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/products/{id} [delete]
 func (h *ProductHandler) HandleDelete(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
@@ -112,3 +166,4 @@ func (h *ProductHandler) HandleDelete(ctx *gin.Context) {
 		"message": "Product deleted successfully",
 	})
 }
+

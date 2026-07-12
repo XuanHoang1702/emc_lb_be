@@ -21,6 +21,15 @@ func NewCartHandler(cartService service.CartService) *CartHandler {
 	return &CartHandler{cartService: cartService}
 }
 
+// HandleGetCart godoc
+// @Summary      Get cart
+// @Description  Get the shopping cart for the authenticated user
+// @Tags         Cart
+// @Produce      json
+// @Success      200  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/cart [get]
 func (h *CartHandler) HandleGetCart(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.ContextUserIDKey)
 	if !exists {
@@ -41,6 +50,18 @@ func (h *CartHandler) HandleGetCart(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, cart)
 }
 
+// HandleAddItem godoc
+// @Summary      Add item to cart
+// @Description  Add a product to the shopping cart
+// @Tags         Cart
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.AddCartItemRequest true "Item to add"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/cart/items [post]
 func (h *CartHandler) HandleAddItem(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.ContextUserIDKey)
 	if !exists {
@@ -67,6 +88,19 @@ func (h *CartHandler) HandleAddItem(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, cart)
 }
 
+// HandleUpdateItem godoc
+// @Summary      Update cart item
+// @Description  Update quantity of a product in the cart
+// @Tags         Cart
+// @Accept       json
+// @Produce      json
+// @Param        productId path string true "Product ID"
+// @Param        body body entities.UpdateCartItemRequest true "New quantity"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/cart/items/{productId} [put]
 func (h *CartHandler) HandleUpdateItem(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.ContextUserIDKey)
 	if !exists {
@@ -103,6 +137,17 @@ func (h *CartHandler) HandleUpdateItem(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, cart)
 }
 
+// HandleRemoveItem godoc
+// @Summary      Remove item from cart
+// @Description  Remove a product from the shopping cart
+// @Tags         Cart
+// @Produce      json
+// @Param        productId path string true "Product ID"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/cart/items/{productId} [delete]
 func (h *CartHandler) HandleRemoveItem(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.ContextUserIDKey)
 	if !exists {
@@ -133,6 +178,15 @@ func (h *CartHandler) HandleRemoveItem(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, cart)
 }
 
+// HandleClearCart godoc
+// @Summary      Clear cart
+// @Description  Remove all items from the shopping cart
+// @Tags         Cart
+// @Produce      json
+// @Success      200  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/cart [delete]
 func (h *CartHandler) HandleClearCart(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.ContextUserIDKey)
 	if !exists {
@@ -152,6 +206,18 @@ func (h *CartHandler) HandleClearCart(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, map[string]string{"message": "Cart cleared successfully"})
 }
 
+// HandleApplyCoupon godoc
+// @Summary      Apply coupon to cart
+// @Description  Apply a discount coupon code to the shopping cart
+// @Tags         Cart
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.ApplyCouponRequest true "Coupon code"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/cart/coupon [post]
 func (h *CartHandler) HandleApplyCoupon(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.ContextUserIDKey)
 	if !exists {

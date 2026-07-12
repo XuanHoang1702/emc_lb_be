@@ -5,8 +5,10 @@ import (
 	"emc_lb/src/internal/repository"
 	route "emc_lb/src/internal/routes"
 	"emc_lb/src/internal/service"
+	"emc_lb/src/pkg/cache"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -16,9 +18,10 @@ type ShopModule struct {
 	handler handler.ShopHandler
 }
 
-func NewShopModule(db *mongo.Database) *ShopModule {
+func NewShopModule(db *mongo.Database, redisClient *redis.Client) *ShopModule {
 	repo := repository.NewShopRepository(db.Collection("shops"))
-	svc := service.NewShopService(repo)
+	shopCacheStore := cache.NewRedisShopCacheStore(redisClient)
+	svc := service.NewShopService(repo, shopCacheStore)
 	hdl := handler.NewShopHandler(svc)
 
 	return &ShopModule{
@@ -43,3 +46,4 @@ func (m *ShopModule) RegisterProtected(router gin.IRouter) {
 		shopGroup.GET("/my-shop", m.handler.GetMyShop)
 	}
 }
+

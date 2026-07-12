@@ -124,12 +124,19 @@ func (s *paymentService) InitCheckout(ctx context.Context, req entities.Checkout
 		}
 		parts = append(parts, key+"="+val)
 	}
+	signString := strings.Join(parts, ",")
+	log.Printf("[SePay DEBUG] Sign string: %s", signString)
 
 	mac := hmac.New(sha256.New, []byte(s.secretKey))
-	mac.Write([]byte(strings.Join(parts, ",")))
+	mac.Write([]byte(signString))
 	signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
 	fields["signature"] = signature
+
+	log.Printf("[SePay DEBUG] Checkout URL: %s", s.checkoutBaseURL())
+	for k, v := range fields {
+		log.Printf("[SePay DEBUG] Field: %s = %s", k, v)
+	}
 
 	return &entities.CheckoutInitResponse{
 		CheckoutURL: s.checkoutBaseURL(),

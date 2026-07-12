@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"emc_lb/src/internal/repository"
+	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/mapping"
@@ -27,13 +28,15 @@ type productService struct {
 	productRepository  repository.ProductRepository
 	categoryRepository repository.CategoryRepository
 	brandRepository    repository.BrandRepository
+	cacheStore         cache.ProductCacheStore
 }
 
-func NewProductService(productRepository repository.ProductRepository, categoryRepository repository.CategoryRepository, brandRepository repository.BrandRepository) ProductService {
+func NewProductService(productRepository repository.ProductRepository, categoryRepository repository.CategoryRepository, brandRepository repository.BrandRepository, cacheStore cache.ProductCacheStore) ProductService {
 	return &productService{
 		productRepository:  productRepository,
 		categoryRepository: categoryRepository,
 		brandRepository:    brandRepository,
+		cacheStore:         cacheStore,
 	}
 }
 
@@ -112,10 +115,20 @@ func (s *productService) Create(ctx context.Context, req entities.CreateProductR
 		return entities.ProductResponse{}, res.WrapError(err, "Can not create product now", erres.CommonInternal)
 	}
 
+	if s.cacheStore != nil {
+		_ = s.cacheStore.InvalidateAll(ctx)
+	}
+
 	return mapping.ToProductResponse(product), nil
 }
 
 func (s *productService) List(ctx context.Context) ([]entities.ProductResponse, error) {
+	if s.cacheStore != nil {
+		if cached, err := s.cacheStore.GetAll(ctx); err == nil {
+			return cached, nil
+		}
+	}
+
 	products, err := s.productRepository.List(ctx)
 	if err != nil {
 		return nil, res.WrapError(err, "Can not get products now", erres.CommonInternal)
@@ -126,15 +139,31 @@ func (s *productService) List(ctx context.Context) ([]entities.ProductResponse, 
 		responses = append(responses, mapping.ToProductResponse(product))
 	}
 
+	if s.cacheStore != nil {
+		_ = s.cacheStore.SetAll(ctx, responses)
+	}
+
 	return responses, nil
 }
 
 func (s *productService) GetByID(ctx context.Context, id string) (entities.ProductResponse, error) {
+	if s.cacheStore != nil {
+		if cached, err := s.cacheStore.GetByID(ctx, id); err == nil {
+			return cached, nil
+		}
+	}
+
 	product, err := s.productRepository.GetByID(ctx, id)
 	if err != nil {
 		return entities.ProductResponse{}, res.WrapError(err, "Product not found", erres.CommonNotFound)
 	}
-	return mapping.ToProductResponse(product), nil
+
+	result := mapping.ToProductResponse(product)
+	if s.cacheStore != nil {
+		_ = s.cacheStore.SetByID(ctx, id, result)
+	}
+
+	return result, nil
 }
 
 func (s *productService) Update(ctx context.Context, id string, req entities.UpdateProductRequest) (entities.ProductResponse, error) {
@@ -233,6 +262,10 @@ func (s *productService) Update(ctx context.Context, id string, req entities.Upd
 		return entities.ProductResponse{}, res.WrapError(err, "Failed to update product", erres.CommonInternal)
 	}
 
+	if s.cacheStore != nil {
+		_ = s.cacheStore.Invalidate(ctx, id)
+	}
+
 	return mapping.ToProductResponse(product), nil
 }
 
@@ -245,6 +278,11 @@ func (s *productService) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return res.WrapError(err, "Failed to delete product", erres.CommonInternal)
 	}
+
+	if s.cacheStore != nil {
+		_ = s.cacheStore.Invalidate(ctx, id)
+	}
+
 	return nil
 }
 

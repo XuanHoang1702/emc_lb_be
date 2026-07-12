@@ -84,9 +84,9 @@ func New() (*App, error) {
 	emailOTPStore := cache.NewRedisEmailOTPStore(redisClient)
 	mailer := mail.NewSMTPMailer()
 	userModule := module.NewUserModule(queries, refreshTokenStore, emailOTPStore, mailer, avatarStorage)
-	shopModule := module.NewShopModule(mongoClient.Database(utils.GetMongoDatabaseName()))
-	productModule := module.NewProductModule(mongoClient.Database(utils.GetMongoDatabaseName()))
-	categoryModule, err := module.NewCategoryModule(mongoClient.Database(utils.GetMongoDatabaseName()))
+	shopModule := module.NewShopModule(mongoClient.Database(utils.GetMongoDatabaseName()), redisClient)
+	productModule := module.NewProductModule(mongoClient.Database(utils.GetMongoDatabaseName()), redisClient)
+	categoryModule, err := module.NewCategoryModule(mongoClient.Database(utils.GetMongoDatabaseName()), redisClient)
 	//=================================================================================================
 
 	if err != nil {
@@ -104,7 +104,7 @@ func New() (*App, error) {
 	}
 
 	couponModule := module.NewCouponModule(mongoClient.Database(utils.GetMongoDatabaseName()))
-	orderModule := module.NewOrderModule(mongoClient.Database(utils.GetMongoDatabaseName()), couponModule.ServiceInstance(), redisClient)
+	orderModule := module.NewOrderModule(mongoClient.Database(utils.GetMongoDatabaseName()), couponModule.ServiceInstance(), redisClient, productModule.CacheStore())
 	paymentModule := module.NewPaymentModule(orderModule.Service())
 	cartModule := module.NewCartModule(mongoClient.Database(utils.GetMongoDatabaseName()), productModule.Repository(), couponModule.ServiceInstance())
 

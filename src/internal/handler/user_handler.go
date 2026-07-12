@@ -23,6 +23,17 @@ func NewUserHandler(userService service.UserService) *UserHandler {
 	return &UserHandler{userService: userService}
 }
 
+// HandleRegister godoc
+// @Summary      Register user
+// @Description  Register a new user account
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.RegisterUserRequest true "Registration details"
+// @Success      201  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      409  {object}  res.APIResponse
+// @Router       /api/v1/user/register [post]
 func (h *UserHandler) HandleRegister(ctx *gin.Context) {
 	var registerRequest entities.RegisterUserRequest
 	err := validation.BindJSON(ctx, &registerRequest, errors.UserInvalidFormat)
@@ -40,6 +51,17 @@ func (h *UserHandler) HandleRegister(ctx *gin.Context) {
 	res.Success(ctx, http.StatusCreated, user)
 }
 
+// HandleLogin godoc
+// @Summary      Login
+// @Description  Authenticate and receive access/refresh tokens
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.LoginUserRequest true "Login credentials"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Router       /api/v1/user/login [post]
 func (h *UserHandler) HandleLogin(ctx *gin.Context) {
 	var loginRequest entities.LoginUserRequest
 	err := validation.BindJSON(ctx, &loginRequest, errors.UserInvalidFormat)
@@ -57,6 +79,17 @@ func (h *UserHandler) HandleLogin(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, data)
 }
 
+// HandleRefreshToken godoc
+// @Summary      Refresh token
+// @Description  Get a new access token using a refresh token
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.RefreshTokenRequest true "Refresh token"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Router       /api/v1/user/refresh-token [post]
 func (h *UserHandler) HandleRefreshToken(ctx *gin.Context) {
 	var refreshTokenRequest entities.RefreshTokenRequest
 	err := validation.BindJSON(ctx, &refreshTokenRequest, errors.UserInvalidFormat)
@@ -74,6 +107,17 @@ func (h *UserHandler) HandleRefreshToken(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, data)
 }
 
+// HandleLogout godoc
+// @Summary      Logout
+// @Description  Invalidate the current session tokens
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.LogoutUserRequest true "Logout request"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/user/logout [post]
 func (h *UserHandler) HandleLogout(ctx *gin.Context) {
 	var logoutRequest entities.LogoutUserRequest
 	err := validation.BindJSON(ctx, &logoutRequest, errors.UserInvalidFormat)
@@ -90,6 +134,16 @@ func (h *UserHandler) HandleLogout(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, "success_logout")
 }
 
+// HandleVerifyEmailOTP godoc
+// @Summary      Verify email OTP
+// @Description  Verify email address using OTP code
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.VerifyEmailOTPRequest true "OTP verification"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Router       /api/v1/user/verify-email-otp [post]
 func (h *UserHandler) HandleVerifyEmailOTP(ctx *gin.Context) {
 	var verifyRequest entities.VerifyEmailOTPRequest
 	err := validation.BindJSON(ctx, &verifyRequest, errors.UserInvalidFormat)
@@ -106,6 +160,17 @@ func (h *UserHandler) HandleVerifyEmailOTP(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, "success_email_verified")
 }
 
+// HandleDelete godoc
+// @Summary      Delete account
+// @Description  Delete the user account
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.DeleteUserRequest true "Delete confirmation"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/user/delete [post]
 func (h *UserHandler) HandleDelete(ctx *gin.Context) {
 	var deleteRequest entities.DeleteUserRequest
 	err := validation.BindJSON(ctx, &deleteRequest, errors.UserInvalidFormat)
@@ -122,6 +187,18 @@ func (h *UserHandler) HandleDelete(ctx *gin.Context) {
 	res.Success(ctx, http.StatusOK, "success_account_deleted")
 }
 
+// HandleUpsertAvatar godoc
+// @Summary      Upload avatar
+// @Description  Upload or update user avatar image
+// @Tags         Users
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        avatar formData file true "Avatar image"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/user/avatar [put]
 func (h *UserHandler) HandleUpsertAvatar(ctx *gin.Context) {
 	userID := ctx.GetString(middleware.ContextUserIDKey)
 	if userID == "" {

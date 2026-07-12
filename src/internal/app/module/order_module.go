@@ -5,6 +5,7 @@ import (
 	"emc_lb/src/internal/repository"
 	route "emc_lb/src/internal/routes"
 	"emc_lb/src/internal/service"
+	"emc_lb/src/pkg/cache"
 
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -15,11 +16,11 @@ type OrderModule struct {
 	orderService service.OrderService
 }
 
-func NewOrderModule(database *mongo.Database, couponSvc service.CouponService, redisClient *redis.Client) *OrderModule {
+func NewOrderModule(database *mongo.Database, couponSvc service.CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore) *OrderModule {
 	orderRepository := repository.NewOrderRepository(database.Collection("orders"))
 	productRepository := repository.NewProductRepository(database.Collection("products"))
-	
-	orderService := service.NewOrderService(orderRepository, productRepository, couponSvc, redisClient)
+
+	orderService := service.NewOrderService(orderRepository, productRepository, couponSvc, redisClient, productCache)
 	orderHandler := handler.NewOrderHandler(orderService)
 	orderRoute := route.NewOrderRoute(orderHandler)
 
@@ -36,3 +37,4 @@ func (m *OrderModule) Routes() route.Route {
 func (m *OrderModule) Service() service.OrderService {
 	return m.orderService
 }
+
