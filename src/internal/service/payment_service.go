@@ -13,6 +13,7 @@ import (
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/res"
+	appconfig "emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/utils"
 )
 
@@ -33,13 +34,28 @@ type paymentService struct {
 
 func NewPaymentService(orderService OrderService) PaymentService {
 	env := utils.GetEnv("SEPAY_ENV", "sandbox")
+	merchantID := utils.GetEnv("SEPAY_MERCHANT_ID", "")
+	secretKey := utils.GetEnv("SEPAY_SECRET_KEY", "")
+	successURL := utils.GetEnv("SEPAY_SUCCESS_URL", "")
+	errorURL := utils.GetEnv("SEPAY_ERROR_URL", "")
+	cancelURL := utils.GetEnv("SEPAY_CANCEL_URL", "")
+
+	if cfg, err := appconfig.Load(); err == nil {
+		env = cfg.Payment.SepayEnv
+		merchantID = cfg.Payment.SepayMerchantID
+		secretKey = cfg.Payment.SepaySecretKey
+		successURL = cfg.Payment.SepaySuccessURL
+		errorURL = cfg.Payment.SepayErrorURL
+		cancelURL = cfg.Payment.SepayCancelURL
+	}
+
 	return &paymentService{
-		merchantID:   utils.GetEnv("SEPAY_MERCHANT_ID", ""),
-		secretKey:    utils.GetEnv("SEPAY_SECRET_KEY", ""),
+		merchantID:   merchantID,
+		secretKey:    secretKey,
 		env:          env,
-		successURL:   utils.GetEnv("SEPAY_SUCCESS_URL", ""),
-		errorURL:     utils.GetEnv("SEPAY_ERROR_URL", ""),
-		cancelURL:    utils.GetEnv("SEPAY_CANCEL_URL", ""),
+		successURL:   successURL,
+		errorURL:     errorURL,
+		cancelURL:    cancelURL,
 		orderService: orderService,
 	}
 }

@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -10,10 +12,20 @@ import (
 func CORSMiddleware() gin.HandlerFunc {
 	config := cors.DefaultConfig()
 
-	// AllowAllOrigins + AllowCredentials is forbidden by CORS spec.
-	// Use AllowOriginFunc to dynamically mirror the Origin header instead.
-	config.AllowOriginFunc = func(origin string) bool {
-		return true // In production, restrict to your known frontend domains
+	// Read allowed origins from env, default to localhost for dev safety.
+	// In production, set CORS_ALLOWED_ORIGINS=https://your-frontend.com,https://admin.your-frontend.com
+	allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if allowedOrigins != "" {
+		origins := strings.Split(allowedOrigins, ",")
+		for i := range origins {
+			origins[i] = strings.TrimSpace(origins[i])
+		}
+		config.AllowOrigins = origins
+	} else {
+		config.AllowOrigins = []string{
+			"http://localhost:3000",
+			"http://localhost:5173",
+		}
 	}
 
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}

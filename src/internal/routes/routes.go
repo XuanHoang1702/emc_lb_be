@@ -21,56 +21,92 @@ type Route interface {
 }
 
 func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Client, pgPool *pgxpool.Pool, mongoClient *mongo.Client) {
+	// Public health check: simple up/down for load balancer probes
 	router.GET("/health", func(ctx *gin.Context) {
-		status := http.StatusOK
-		response := gin.H{
+		ctx.JSON(http.StatusOK, gin.H{
 			"status": "up",
 			"time":   time.Now().Format(time.RFC3339),
-			"services": gin.H{
-				"postgres": "up",
-				"mongodb":  "up",
-				"redis":    "up",
-			},
-		}
-
-		// Ping Postgres
-		if pgPool != nil {
-			if err := pgPool.Ping(ctx.Request.Context()); err != nil {
-				response["services"].(gin.H)["postgres"] = "down"
-				status = http.StatusServiceUnavailable
-			}
-		} else {
-			response["services"].(gin.H)["postgres"] = "not_configured"
-		}
-
-		// Ping MongoDB
-		if mongoClient != nil {
-			if err := mongoClient.Ping(ctx.Request.Context(), nil); err != nil {
-				response["services"].(gin.H)["mongodb"] = "down"
-				status = http.StatusServiceUnavailable
-			}
-		} else {
-			response["services"].(gin.H)["mongodb"] = "not_configured"
-		}
-
-		// Ping Redis
-		if redisClient != nil {
-			if err := redisClient.Ping(ctx.Request.Context()).Err(); err != nil {
-				response["services"].(gin.H)["redis"] = "down"
-				status = http.StatusServiceUnavailable
-			}
-		} else {
-			response["services"].(gin.H)["redis"] = "not_configured"
-		}
-
-		if status != http.StatusOK {
-			response["status"] = "down"
-		}
-
-		ctx.JSON(status, response)
+		})
 	})
 
-	router.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// Internal health check: detailed service status, protected by API key
+	router.GET("/health/detail", middleware.ApiKeyMiddleware(), func(ctx *gin.Context) {
+		reqCtx := ctx.Request.Context()
+		status := http.StatusOK
+		services := gin.H{}
+
+		// Postgres
+		if pgPool != nil {
+			start := time.Now()
+			if err := pgPool.Ping(reqCtx); err != nil {
+				services["postgres"] = gin.H{"status": "down", "error": err.Error()}
+				status = http.StatusServiceUnavailable
+			} else {
+				stat := pgPool.Stat()
+				services["postgres"] = gin.H{
+					"status":     "up",
+					"latency_ms": time.Since(start).Milliseconds(),
+					"pool": gin.H{
+						"total":  stat.TotalConns(),
+						"idle":   stat.IdleConns(),
+						"in_use": stat.AcquiredConns(),
+					},
+				}
+			}
+		} else {
+			services["postgres"] = gin.H{"status": "not_configured"}
+		}
+
+		// MongoDB
+		if mongoClient != nil {
+			start := time.Now()
+			if err := mongoClient.Ping(reqCtx, nil); err != nil {
+				services["mongodb"] = gin.H{"status": "down", "error": err.Error()}
+				status = http.StatusServiceUnavailable
+			} else {
+				services["mongodb"] = gin.H{
+					"status":     "up",
+					"latency_ms": time.Since(start).Milliseconds(),
+				}
+			}
+		} else {
+			services["mongodb"] = gin.H{"status": "not_configured"}
+		}
+
+		// Redis
+		if redisClient != nil {
+			start := time.Now()
+			if err := redisClient.Ping(reqCtx).Err(); err != nil {
+				services["redis"] = gin.H{"status": "down", "error": err.Error()}
+				status = http.StatusServiceUnavailable
+			} else {
+				services["redis"] = gin.H{
+					"status":     "up",
+					"latency_ms": time.Since(start).Milliseconds(),
+				}
+			}
+		} else {
+			services["redis"] = gin.H{"status": "not_configured"}
+		}
+
+		overallStatus := "up"
+		if status != http.StatusOK {
+			overallStatus = "degraded"
+		}
+
+		ctx.JSON(status, gin.H{
+			"status":   overallStatus,
+			"time":     time.Now().Format(time.RFC3339),
+			"services": services,
+		})
+	})
+
+	// Swagger docs: protected by API key in production
+	docsGroup := router.Group("/docs")
+	if gin.Mode() == gin.ReleaseMode {
+		docsGroup.Use(middleware.ApiKeyMiddleware())
+	}
+	docsGroup.GET("/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	apiV1 := router.Group("/api/v1")
 
@@ -91,3 +127,4 @@ func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Clie
 		moduleRoute.RegisterProtected(protectedGroup)
 	}
 }
+

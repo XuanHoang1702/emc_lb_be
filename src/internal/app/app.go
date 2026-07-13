@@ -8,13 +8,14 @@ import (
 
 	"emc_lb/src/internal/app/module"
 	"emc_lb/src/internal/db/sqlc"
-
 	"emc_lb/src/internal/middleware"
 	route "emc_lb/src/internal/routes"
 	"emc_lb/src/pkg/auth"
 	"emc_lb/src/pkg/cache"
+	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/logs"
 	"emc_lb/src/pkg/mail"
+	"emc_lb/src/pkg/migrate"
 	"emc_lb/src/pkg/storage"
 	"emc_lb/src/pkg/utils"
 	"emc_lb/src/pkg/validation"
@@ -25,6 +26,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
+// App holds all long-lived server resources and exposes Run / Close.
 type App struct {
 	server            *http.Server
 	pgPool            *pgxpool.Pool
@@ -35,24 +37,41 @@ type App struct {
 	avatarStorage     storage.AvatarStorage
 }
 
+// New bootstraps the full application.
+// Order: config → logger → validator → migrate → connections → modules → server.
 func New() (*App, error) {
+	// ── 1. Load & validate typed config ──────────────────────────────────────
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	// ── 2. Structured logger ─────────────────────────────────────────────────
+	logs.Init(cfg.App.LogLevel, cfg.App.Mode)
+
+	// ── 3. Input validation ──────────────────────────────────────────────────
 	if err := validation.InitValidator(); err != nil {
 		return nil, fmt.Errorf("initialize validator: %w", err)
 	}
 
-	databaseURL := utils.BuildDatabaseURL()
-	pgPool, err := pgxpool.New(context.Background(), databaseURL)
+	// ── 4. Auto-migration ────────────────────────────────────────────────────
+	if err := migrate.Run(cfg.Postgres.DatabaseURL(), cfg.App.MigrationsDir); err != nil {
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
+
+	// ── 5. Database connections ──────────────────────────────────────────────
+	pgPool, err := utils.NewPgPoolFromConfig(context.Background(), &cfg.Postgres)
 	if err != nil {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
 
-	mongoClient, err := utils.NewMongoClient(context.Background())
+	mongoClient, err := utils.NewMongoClientFromConfig(context.Background(), &cfg.MongoDB)
 	if err != nil {
 		pgPool.Close()
 		return nil, fmt.Errorf("create mongo client: %w", err)
 	}
 
-	redisClient, err := utils.NewRedisClient()
+	redisClient, err := utils.NewRedisClientFromConfig(&cfg.Redis)
 	if err != nil {
 		pgPool.Close()
 		_ = mongoClient.Disconnect(context.Background())
@@ -74,28 +93,49 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("ensure avatar bucket: %w", err)
 	}
 
-	router := gin.New()
-	router.Use(middleware.CORSMiddleware(), middleware.RequestLogMiddleware(), middleware.AcceptLanguageMiddleware(), gin.Recovery())
-
-	// MODULES
+	// ── 6. Shared services ───────────────────────────────────────────────────
 	queries := sqlc.New(logs.WrapDBTX(pgPool))
 	auth.InitRBACManager(queries)
 	refreshTokenStore := cache.NewRedisRefreshTokenStore(redisClient)
 	emailOTPStore := cache.NewRedisEmailOTPStore(redisClient)
 	mailer := mail.NewSMTPMailer()
-	userModule := module.NewUserModule(queries, refreshTokenStore, emailOTPStore, mailer, avatarStorage)
-	shopModule := module.NewShopModule(mongoClient.Database(utils.GetMongoDatabaseName()), redisClient)
-	productModule := module.NewProductModule(mongoClient.Database(utils.GetMongoDatabaseName()), redisClient)
-	categoryModule, err := module.NewCategoryModule(mongoClient.Database(utils.GetMongoDatabaseName()), redisClient)
-	//=================================================================================================
+	mongoDB := mongoClient.Database(cfg.MongoDB.Database)
 
+	// ── 7. AppDeps container ─────────────────────────────────────────────────
+	deps := &AppDeps{
+		Config:            cfg,
+		PgPool:            pgPool,
+		PgQueries:         queries,
+		MongoClient:       mongoClient,
+		MongoDB:           mongoDB,
+		RedisClient:       redisClient,
+		RefreshTokenStore: refreshTokenStore,
+		EmailOTPStore:     emailOTPStore,
+		AvatarStorage:     avatarStorage,
+		Mailer:            mailer,
+	}
+
+	// ── 8. Module registry ───────────────────────────────────────────────────
+	// Modules are built here. Cross-module dependencies (e.g. couponSvc inside
+	// orderModule) are wired via closures that capture module instances.
+	// Each factory receives deps and returns a route.Route.
+	var (
+		couponMod  *module.CouponModule
+		productMod *module.ProductModule
+	)
+
+	couponMod = module.NewCouponModule(mongoDB)
+	productMod = module.NewProductModule(mongoDB, redisClient)
+
+	categoryMod, err := module.NewCategoryModule(mongoDB, redisClient)
 	if err != nil {
 		pgPool.Close()
 		_ = mongoClient.Disconnect(context.Background())
 		_ = redisClient.Close()
 		return nil, fmt.Errorf("create category module: %w", err)
 	}
-	brandModule, err := module.NewBrandModule(mongoClient.Database(utils.GetMongoDatabaseName()))
+
+	brandMod, err := module.NewBrandModule(mongoDB)
 	if err != nil {
 		pgPool.Close()
 		_ = mongoClient.Disconnect(context.Background())
@@ -103,25 +143,39 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
 
-	couponModule := module.NewCouponModule(mongoClient.Database(utils.GetMongoDatabaseName()))
-	orderModule := module.NewOrderModule(mongoClient.Database(utils.GetMongoDatabaseName()), couponModule.ServiceInstance(), redisClient, productModule.CacheStore())
-	paymentModule := module.NewPaymentModule(orderModule.Service())
-	cartModule := module.NewCartModule(mongoClient.Database(utils.GetMongoDatabaseName()), productModule.Repository(), couponModule.ServiceInstance())
+	orderMod := module.NewOrderModule(mongoDB, couponMod.ServiceInstance(), redisClient, productMod.CacheStore())
+	paymentMod := module.NewPaymentModule(orderMod.Service())
+	cartMod := module.NewCartModule(mongoDB, productMod.Repository(), couponMod.ServiceInstance())
+	shopMod := module.NewShopModule(mongoDB, redisClient)
+	userMod := module.NewUserModule(queries, refreshTokenStore, emailOTPStore, mailer, avatarStorage)
+
+	_ = deps // deps available for future module factories via registry
+
+	// ── 9. HTTP router ───────────────────────────────────────────────────────
+	router := gin.New()
+	router.Use(
+		middleware.RequestIDMiddleware(),
+		middleware.CORSMiddleware(),
+		middleware.RequestLogMiddleware(),
+		middleware.AcceptLanguageMiddleware(),
+		gin.Recovery(),
+	)
 
 	route.RegisterRoutes(router, []route.Route{
-		userModule.Routes(),
-		shopModule.Routes(),
-		productModule.Routes(),
-		categoryModule.Routes(),
-		brandModule.Routes(),
-		orderModule.Routes(),
-		paymentModule.Routes(),
-		cartModule.Route,
-		couponModule.Routes(),
+		userMod.Routes(),
+		shopMod.Routes(),
+		productMod.Routes(),
+		categoryMod.Routes(),
+		brandMod.Routes(),
+		orderMod.Routes(),
+		paymentMod.Routes(),
+		cartMod.Route,
+		couponMod.Routes(),
 	}, redisClient, pgPool, mongoClient)
 
+	// ── 10. HTTP server ──────────────────────────────────────────────────────
 	server := &http.Server{
-		Addr:              ":" + utils.GetEnv("APP_PORT", "8080"),
+		Addr:              ":" + cfg.App.Port,
 		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -142,6 +196,12 @@ func (a *App) Run() error {
 }
 
 func (a *App) Close(ctx context.Context) error {
+	var shutdownErr error
+
+	if a.server != nil {
+		shutdownErr = a.server.Shutdown(ctx)
+	}
+
 	if a.pgPool != nil {
 		a.pgPool.Close()
 	}
@@ -154,9 +214,5 @@ func (a *App) Close(ctx context.Context) error {
 		_ = a.redisClient.Close()
 	}
 
-	if a.server != nil {
-		return a.server.Shutdown(ctx)
-	}
-
-	return nil
+	return shutdownErr
 }

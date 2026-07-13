@@ -1,5 +1,6 @@
 # Build and runtime
 /tmp
+/main
 *.exe
 *.dll
 *.so
@@ -8,6 +9,7 @@
 # Environment
 .env
 .env.dev
+.env.develop
 
 # Runtime logs
 src/logs/*.log

@@ -38,6 +38,12 @@ lint:
 sqlc:
 	sqlc generate
 
+mock:
+	go run github.com/vektra/mockery/v2@v2.42.1 --all --keeptree --dir=src/internal/repository --output=src/tests/mocks/repository
+	go run github.com/vektra/mockery/v2@v2.42.1 --all --keeptree --dir=src/pkg/storage --output=src/tests/mocks/storage
+	go run github.com/vektra/mockery/v2@v2.42.1 --all --keeptree --dir=src/pkg/mail --output=src/tests/mocks/mail
+	go run github.com/vektra/mockery/v2@v2.42.1 --all --keeptree --dir=src/pkg/cache --output=src/tests/mocks/cache
+
 swag:
 	go run github.com/swaggo/swag/cmd/swag@latest init -g src/cmd/server/main.go -o src/docs
 

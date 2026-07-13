@@ -4,10 +4,51 @@ import (
 	"context"
 	"time"
 
+	"emc_lb/src/pkg/config"
+
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
+
+// NewMongoClientFromConfig creates a MongoDB client using typed AppConfig.
+func NewMongoClientFromConfig(ctx context.Context, cfg *config.MongoSettings) (*mongo.Client, error) {
+	clientOpts := options.Client().
+		ApplyURI(cfg.URI).
+		SetMaxPoolSize(50).
+		SetMinPoolSize(5).
+		SetMaxConnIdleTime(5 * time.Minute).
+		SetMaxConnecting(10).
+		SetConnectTimeout(10 * time.Second).
+		SetServerSelectionTimeout(5 * time.Second)
+
+	client, err := mongo.Connect(clientOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer pingCancel()
+
+	if err := client.Database(cfg.Database).RunCommand(pingCtx, bson.D{{Key: "ping", Value: 1}}).Err(); err != nil {
+		disconnectCtx, disconnectCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer disconnectCancel()
+		_ = client.Disconnect(disconnectCtx)
+		return nil, err
+	}
+
+	return client, nil
+}
+
+// NewMongoClient creates a MongoDB client using env vars directly (legacy fallback).
+// Prefer NewMongoClientFromConfig when AppConfig is available.
+func NewMongoClient(ctx context.Context) (*mongo.Client, error) {
+	cfg := &config.MongoSettings{
+		URI:      BuildMongoURI(),
+		Database: GetMongoDatabaseName(),
+	}
+	return NewMongoClientFromConfig(ctx, cfg)
+}
 
 func BuildMongoURI() string {
 	if value := GetEnv("MONGO_URI", ""); value != "" {
@@ -27,23 +68,4 @@ func GetMongoDatabaseName() string {
 	}
 
 	return "emc_lb"
-}
-
-func NewMongoClient(ctx context.Context) (*mongo.Client, error) {
-	client, err := mongo.Connect(options.Client().ApplyURI(BuildMongoURI()))
-	if err != nil {
-		return nil, err
-	}
-
-	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
-	defer pingCancel()
-
-	if err := client.Database(GetMongoDatabaseName()).RunCommand(pingCtx, bson.D{{Key: "ping", Value: 1}}).Err(); err != nil {
-		disconnectCtx, disconnectCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer disconnectCancel()
-		_ = client.Disconnect(disconnectCtx)
-		return nil, err
-	}
-
-	return client, nil
 }

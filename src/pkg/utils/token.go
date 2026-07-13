@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"emc_lb/src/pkg/config"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -46,9 +48,9 @@ func GenerateTokenPair(userID string, role string) (TokenPair, error) {
 }
 
 func GenerateAccessToken(userID string, role string) (string, time.Time, error) {
-	ttl := GetDurationFromEnv("ACCESS_TOKEN_TTL", 15*time.Minute)
+	cfg := getJWTConfig()
 	now := time.Now()
-	return generateAccessJWT(userID, role, now, ttl, buildTokenSecret(GetEnv("ACCESS_TOKEN_SECRET", "access-secret")))
+	return generateAccessJWT(userID, role, now, cfg.AccessTTL, buildTokenSecret(cfg.AccessSecret))
 }
 
 func ParseAccessToken(accessToken string) (string, string, error) {
@@ -57,7 +59,7 @@ func ParseAccessToken(accessToken string) (string, string, error) {
 			return nil, errors.New("invalid signing method")
 		}
 
-		return buildTokenSecret(GetEnv("ACCESS_TOKEN_SECRET", "access-secret")), nil
+		return buildTokenSecret(getJWTConfig().AccessSecret), nil
 	})
 	if err != nil {
 		return "", "", err
@@ -72,8 +74,8 @@ func ParseAccessToken(accessToken string) (string, string, error) {
 }
 
 func GenerateRefreshToken() (string, time.Time, error) {
-	ttl := GetDurationFromEnv("REFRESH_TOKEN_TTL", 7*24*time.Hour)
-	expiresAt := time.Now().Add(ttl)
+	cfg := getJWTConfig()
+	expiresAt := time.Now().Add(cfg.RefreshTTL)
 
 	tokenBytes := make([]byte, 24)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -81,7 +83,7 @@ func GenerateRefreshToken() (string, time.Time, error) {
 	}
 
 	payload := base64.RawURLEncoding.EncodeToString(tokenBytes)
-	signature := signTokenPayload(payload, buildTokenSecret(GetEnv("REFRESH_TOKEN_SECRET", "refresh-secret")))
+	signature := signTokenPayload(payload, buildTokenSecret(cfg.RefreshSecret))
 	refreshToken := payload + "." + signature
 	return refreshToken, expiresAt, nil
 }
@@ -108,9 +110,37 @@ func generateAccessJWT(userID string, role string, issuedAt time.Time, ttl time.
 }
 
 func buildTokenSecret(secret string) []byte {
-	systemSecret := GetEnv("SYSTEM_SECRET", "system-secret")
+	systemSecret := getJWTConfig().AccessSecret // use AccessSecret as system salt
 	sum := sha256.Sum256([]byte(systemSecret + ":" + secret))
 	return sum[:]
+}
+
+// getJWTConfig returns JWT settings from config singleton, falling back to env
+// vars so that tests and tools that don't call config.Load() still work.
+func getJWTConfig() jwtSettings {
+	if cfg, err := config.Load(); err == nil {
+		return jwtSettings{
+			AccessSecret:  cfg.JWT.AccessSecret,
+			RefreshSecret: cfg.JWT.RefreshSecret,
+			AccessTTL:     cfg.JWT.AccessTTL,
+			RefreshTTL:    cfg.JWT.RefreshTTL,
+		}
+	}
+
+	// Fallback for tests / standalone tooling
+	return jwtSettings{
+		AccessSecret:  GetEnv("ACCESS_TOKEN_SECRET", "access-secret"),
+		RefreshSecret: GetEnv("REFRESH_TOKEN_SECRET", "refresh-secret"),
+		AccessTTL:     GetDurationFromEnv("ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTTL:    GetDurationFromEnv("REFRESH_TOKEN_TTL", 7*24*time.Hour),
+	}
+}
+
+type jwtSettings struct {
+	AccessSecret  string
+	RefreshSecret string
+	AccessTTL     time.Duration
+	RefreshTTL    time.Duration
 }
 
 func signTokenPayload(payload string, secret []byte) string {

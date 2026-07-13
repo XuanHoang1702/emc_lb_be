@@ -3,6 +3,7 @@ package middleware
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -15,23 +16,30 @@ func RequestLogMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		startedAt := time.Now()
 		requestBody := readRequestBody(ctx)
+		requestID := GetRequestID(ctx)
 
-		logs.LogOperation("handler", "request_started", map[string]any{
-			"method": ctx.Request.Method,
-			"path":   ctx.Request.URL.Path,
-			"ip":     ctx.ClientIP(),
-			"body":   requestBody,
-		})
+		logs.L().Info("request_started",
+			slog.String("request_id", requestID),
+			slog.String("method", ctx.Request.Method),
+			slog.String("path", ctx.Request.URL.Path),
+			slog.String("ip", ctx.ClientIP()),
+			slog.String("body", requestBody),
+		)
 
 		ctx.Next()
 
-		logs.LogOperation("handler", "request_finished", map[string]any{
-			"method":      ctx.Request.Method,
-			"path":        ctx.Request.URL.Path,
-			"ip":          ctx.ClientIP(),
-			"status_code": ctx.Writer.Status(),
-			"duration_ms": time.Since(startedAt).Milliseconds(),
-		})
+		userID, _ := ctx.Get(ContextUserIDKey)
+		userIDStr, _ := userID.(string)
+
+		logs.L().Info("request_finished",
+			slog.String("request_id", requestID),
+			slog.String("method", ctx.Request.Method),
+			slog.String("path", ctx.Request.URL.Path),
+			slog.String("ip", ctx.ClientIP()),
+			slog.String("user_id", userIDStr),
+			slog.Int("status_code", ctx.Writer.Status()),
+			slog.Int64("duration_ms", time.Since(startedAt).Milliseconds()),
+		)
 	}
 }
 
