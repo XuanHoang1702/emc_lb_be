@@ -11,11 +11,11 @@ import (
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/logs"
-	"emc_lb/src/pkg/mail"
 	"emc_lb/src/pkg/mapping"
 	"emc_lb/src/pkg/res"
 	"emc_lb/src/pkg/storage"
 	"emc_lb/src/pkg/utils"
+	"emc_lb/src/pkg/worker"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -36,16 +36,16 @@ type userService struct {
 	userRepository    repository.UserRepository
 	refreshTokenStore cache.RefreshTokenStore
 	emailOTPStore     cache.EmailOTPStore
-	mailer            mail.Mailer
+	taskDistributor   worker.TaskDistributor
 	avatarStorage     storage.AvatarStorage
 }
 
-func NewUserService(userRepository repository.UserRepository, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, mailer mail.Mailer, avatarStorage storage.AvatarStorage) UserService {
+func NewUserService(userRepository repository.UserRepository, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) UserService {
 	return &userService{
 		userRepository:    userRepository,
 		refreshTokenStore: refreshTokenStore,
 		emailOTPStore:     emailOTPStore,
-		mailer:            mailer,
+		taskDistributor:   taskDistributor,
 		avatarStorage:     avatarStorage,
 	}
 }
@@ -92,8 +92,15 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not create account now", erres.CommonInternal)
 	}
 
-	if err := s.mailer.SendEmailVerificationOTP(ctx, normalizedRequest.Email, normalizedRequest.UserName, otp, int(otpTTL.Minutes())); err != nil {
-		logs.LogError("mail", "send_verification_otp_failed", err, map[string]any{
+	payload := &worker.PayloadSendVerifyEmail{
+		Email:    normalizedRequest.Email,
+		UserName: normalizedRequest.UserName,
+		OTP:      otp,
+		TTL:      int(otpTTL.Minutes()),
+	}
+
+	if err := s.taskDistributor.DistributeTaskSendVerifyEmail(ctx, payload); err != nil {
+		logs.LogError("worker", "enqueue_verify_email_task_failed", err, map[string]any{
 			"email":     normalizedRequest.Email,
 			"user_name": normalizedRequest.UserName,
 		})

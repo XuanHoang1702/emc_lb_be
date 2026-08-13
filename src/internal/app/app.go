@@ -19,8 +19,10 @@ import (
 	"emc_lb/src/pkg/storage"
 	"emc_lb/src/pkg/utils"
 	"emc_lb/src/pkg/validation"
+	"emc_lb/src/pkg/worker"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -109,6 +111,12 @@ func New() (*App, error) {
 	mailer := mail.NewSMTPMailer()
 	mongoDB := mongoClient.Database(cfg.MongoDB.Database)
 
+	redisOpt := asynq.RedisClientOpt{
+		Addr:     cfg.Redis.Host + ":" + cfg.Redis.Port,
+		Password: cfg.Redis.Password,
+	}
+	taskDistributor := worker.NewRedisTaskDistributor(redisOpt)
+
 	// ── 7. AppDeps container ─────────────────────────────────────────────────
 	deps := &AppDeps{
 		Config:            cfg,
@@ -121,6 +129,7 @@ func New() (*App, error) {
 		EmailOTPStore:     emailOTPStore,
 		AvatarStorage:     avatarStorage,
 		Mailer:            mailer,
+		TaskDistributor:   taskDistributor,
 	}
 
 	// ── 8. Module registry ───────────────────────────────────────────────────
@@ -148,7 +157,7 @@ func New() (*App, error) {
 	paymentMod := module.NewPaymentModule(orderMod.Service())
 	cartMod := module.NewCartModule(mongoDB, productMod.Repository(), couponMod.ServiceInstance())
 	shopMod := module.NewShopModule(mongoDB, redisClient)
-	userMod := module.NewUserModule(queries, refreshTokenStore, emailOTPStore, mailer, avatarStorage)
+	userMod := module.NewUserModule(queries, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
 
 	_ = deps // deps available for future module factories via registry
 

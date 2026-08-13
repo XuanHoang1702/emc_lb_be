@@ -7,6 +7,7 @@ import (
 	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/mail"
 	"emc_lb/src/pkg/storage"
+	"emc_lb/src/pkg/worker"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -35,8 +36,9 @@ type AppDeps struct {
 	EmailOTPStore     cache.EmailOTPStore
 
 	// External services
-	AvatarStorage storage.AvatarStorage
-	Mailer        mail.Mailer
+	AvatarStorage   storage.AvatarStorage
+	Mailer          mail.Mailer
+	TaskDistributor worker.TaskDistributor
 }
 
 // ModuleFactory is a function that constructs a module's route.Route from

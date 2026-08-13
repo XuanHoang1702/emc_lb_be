@@ -198,6 +198,34 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  emc_worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    restart: always
+    env_file: ../.env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      LOCALSTACK_ENDPOINT: http://localstack:4566
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - emc-network
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
   nginx:
     image: nginx:alpine
     ports:

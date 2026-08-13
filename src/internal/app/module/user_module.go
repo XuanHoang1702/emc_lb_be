@@ -7,17 +7,17 @@ import (
 	route "emc_lb/src/internal/routes"
 	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/cache"
-	"emc_lb/src/pkg/mail"
 	"emc_lb/src/pkg/storage"
+	"emc_lb/src/pkg/worker"
 )
 
 type UserModule struct {
 	routes route.Route
 }
 
-func NewUserModule(queries sqlc.Querier, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, mailer mail.Mailer, avatarStorage storage.AvatarStorage) *UserModule {
+func NewUserModule(queries sqlc.Querier, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) *UserModule {
 	userRepository := repository.NewUserRepository(queries)
-	userService := service.NewUserService(userRepository, refreshTokenStore, emailOTPStore, mailer, avatarStorage)
+	userService := service.NewUserService(userRepository, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
 	userHandler := handler.NewUserHandler(userService)
 	userRoute := route.NewUserRoute(userHandler)
 

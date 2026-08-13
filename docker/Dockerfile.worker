@@ -1,0 +1,27 @@
+FROM golang:1.25.0-alpine AS builder
+
+WORKDIR /app
+
+RUN apk add --no-cache gcc musl-dev
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Build the worker binary
+RUN go build -o /app/emc_worker src/cmd/worker/main.go
+
+FROM alpine:3.19
+
+WORKDIR /app
+
+RUN apk add --no-cache tzdata ca-certificates
+
+# Copy the binary
+COPY --from=builder /app/emc_worker .
+
+# Copy environment variables or config files if needed (assuming .env is mounted or provided)
+COPY --from=builder /app/.env .env
+
+CMD ["/app/emc_worker"]
