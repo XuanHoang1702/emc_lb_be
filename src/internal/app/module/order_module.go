@@ -1,6 +1,9 @@
 package module
 
 import (
+	"context"
+	"log"
+
 	"emc_lb/src/internal/handler"
 	"emc_lb/src/internal/repository"
 	route "emc_lb/src/internal/routes"
@@ -16,11 +19,16 @@ type OrderModule struct {
 	orderService service.OrderService
 }
 
-func NewOrderModule(database *mongo.Database, couponSvc service.CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore) *OrderModule {
+func NewOrderModule(database *mongo.Database, mongoClient *mongo.Client, couponSvc service.CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore) *OrderModule {
 	orderRepository := repository.NewOrderRepository(database.Collection("orders"))
 	productRepository := repository.NewProductRepository(database.Collection("products"))
 
-	orderService := service.NewOrderService(orderRepository, productRepository, couponSvc, redisClient, productCache)
+	// Ensure indexes for optimized lookups
+	if err := orderRepository.EnsureIndexes(context.Background()); err != nil {
+		log.Printf("warning: failed to ensure order indexes: %v", err)
+	}
+
+	orderService := service.NewOrderService(orderRepository, productRepository, couponSvc, redisClient, productCache, mongoClient)
 	orderHandler := handler.NewOrderHandler(orderService)
 	orderRoute := route.NewOrderRoute(orderHandler)
 

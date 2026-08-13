@@ -21,7 +21,7 @@ func CheckPassword(password string, hashedPassword string) error {
 }
 
 func buildPasswordInput(password string) string {
-	systemSecret := GetEnv("SYSTEM_SECRET", "system-secret")
+	systemSecret := GetEnvRequired("SYSTEM_SECRET")
 	sum := sha256.Sum256([]byte(password + ":" + systemSecret))
 	return hex.EncodeToString(sum[:])
 }

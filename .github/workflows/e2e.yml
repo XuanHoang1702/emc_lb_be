@@ -1,0 +1,82 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+jobs:
+  e2e-test:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25" # Update if you use a different Go version
+          cache: true
+
+      - name: Setup Environment
+        run: |
+          # Use the development environment variables containing dummy credentials
+          cp .env.dev .env
+
+      - name: Start Dependencies (Docker Compose)
+        # Only starting dependencies, not the app nodes or nginx to save resources
+        run: docker compose -f docker/docker-compose.yml up -d postgres mongo redis localstack
+
+      - name: Wait for Dependencies
+        run: |
+          echo "Waiting for Postgres..."
+          for i in {1..30}; do
+            docker exec $(docker compose -f docker/docker-compose.yml ps -q postgres) pg_isready -U postgres && break || sleep 1;
+          done
+          
+          # Give Mongo, Redis and Localstack extra time to fully initialize
+          sleep 5
+
+      - name: Install golang-migrate
+        run: |
+          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz | tar xvz
+          sudo mv migrate /usr/local/bin/migrate
+
+      - name: Run Database Migrations
+        run: make migrate-up
+
+      - name: Build and Start API Server
+        run: |
+          # Build the server
+          go build -o tmp_server ./src/cmd/server
+          
+          # Start server in the background
+          ./tmp_server &
+          
+          echo "Waiting for API server to boot up..."
+          sleep 5
+
+      - name: Run Go Integration Tests
+        run: make test
+
+      - name: Run External API Tests (cURL / Postman)
+        run: |
+          echo "Testing if server is accepting connections..."
+          # Basic curl to check if the port is open and server responds (even if 404)
+          curl -s http://localhost:8080/ > /dev/null || echo "Note: Root endpoint might be 404, but server is listening."
+          
+          # ---------------------------------------------------------
+          # TODO (Seeding & Postman):
+          # Place your separate test scripts / data seeding here
+          # 
+          # Example for Postman/Newman:
+          # npm install -g newman
+          # newman run ./docs/tests/collection.json -e ./docs/tests/env.json
+          # ---------------------------------------------------------
+
+      - name: Teardown Infrastructure
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down

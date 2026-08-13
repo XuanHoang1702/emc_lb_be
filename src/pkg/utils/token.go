@@ -129,8 +129,8 @@ func getJWTConfig() jwtSettings {
 
 	// Fallback for tests / standalone tooling
 	return jwtSettings{
-		AccessSecret:  GetEnv("ACCESS_TOKEN_SECRET", "access-secret"),
-		RefreshSecret: GetEnv("REFRESH_TOKEN_SECRET", "refresh-secret"),
+		AccessSecret:  GetEnvRequired("ACCESS_TOKEN_SECRET"),
+		RefreshSecret: GetEnvRequired("REFRESH_TOKEN_SECRET"),
 		AccessTTL:     GetDurationFromEnv("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTTL:    GetDurationFromEnv("REFRESH_TOKEN_TTL", 7*24*time.Hour),
 	}

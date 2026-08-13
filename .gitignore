@@ -1,10 +1,15 @@
 # Build and runtime
 /tmp
 /main
+/server
+tmp_server
 *.exe
 *.dll
 *.so
 *.dylib
+coverage.out
+coverage.html
+main
 
 # Environment
 .env
@@ -19,4 +24,4 @@ vendor/
 
 # IDE
 .vscode/
-.agent
+.agents/

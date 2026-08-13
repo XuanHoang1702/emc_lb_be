@@ -76,6 +76,19 @@ func (s *paymentService) InitCheckout(ctx context.Context, req entities.Checkout
 		}
 	}
 
+	order, err := s.orderService.GetOrderByInvoiceNumber(ctx, req.OrderInvoiceNumber)
+	if err != nil {
+		return nil, err
+	}
+
+	if order.TotalAmount != req.OrderAmount {
+		return nil, &res.AppError{
+			Message:    "Order amount mismatch",
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
 	// Resolve callback URLs: request overrides > env config
 	successURL := s.successURL
 	if req.SuccessURL != "" {
@@ -141,18 +154,12 @@ func (s *paymentService) InitCheckout(ctx context.Context, req entities.Checkout
 		parts = append(parts, key+"="+val)
 	}
 	signString := strings.Join(parts, ",")
-	log.Printf("[SePay DEBUG] Sign string: %s", signString)
 
 	mac := hmac.New(sha256.New, []byte(s.secretKey))
 	mac.Write([]byte(signString))
 	signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
 	fields["signature"] = signature
-
-	log.Printf("[SePay DEBUG] Checkout URL: %s", s.checkoutBaseURL())
-	for k, v := range fields {
-		log.Printf("[SePay DEBUG] Field: %s = %s", k, v)
-	}
 
 	return &entities.CheckoutInitResponse{
 		CheckoutURL: s.checkoutBaseURL(),
@@ -180,10 +187,13 @@ func (s *paymentService) ProcessIPN(ctx context.Context, req entities.SePayIPNRe
 		}
 	}
 
+	var paidAmount float64
+	fmt.Sscanf(req.Order.OrderAmount, "%f", &paidAmount)
+
 	log.Printf("SePay IPN: ORDER_PAID invoice=%s amount=%s method=%s",
 		invoiceNumber, req.Order.OrderAmount, req.Transaction.PaymentMethod)
 
-	if err := s.orderService.MarkAsPaidByInvoice(ctx, invoiceNumber); err != nil {
+	if err := s.orderService.MarkAsPaidByInvoice(ctx, invoiceNumber, paidAmount); err != nil {
 		log.Printf("Failed to mark order as paid: %v", err)
 		return err
 	}

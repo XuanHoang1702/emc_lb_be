@@ -59,6 +59,10 @@ func (m *RBACManager) LoadPermissions(queries *sqlc.Queries) error {
 	return nil
 }
 
+func (m *RBACManager) RefreshPermissions(queries *sqlc.Queries) error {
+	return m.LoadPermissions(queries)
+}
+
 func (m *RBACManager) HasPermission(roleCode string, permissionCode string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

@@ -64,32 +64,26 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
+	closers = append(closers, func() { pgPool.Close() })
 
 	mongoClient, err := utils.NewMongoClientFromConfig(context.Background(), &cfg.MongoDB)
 	if err != nil {
-		pgPool.Close()
 		return nil, fmt.Errorf("create mongo client: %w", err)
 	}
+	closers = append(closers, func() { _ = mongoClient.Disconnect(context.Background()) })
 
 	redisClient, err := utils.NewRedisClientFromConfig(&cfg.Redis)
 	if err != nil {
-		pgPool.Close()
-		_ = mongoClient.Disconnect(context.Background())
 		return nil, fmt.Errorf("create redis client: %w", err)
 	}
+	closers = append(closers, func() { _ = redisClient.Close() })
 
 	avatarStorage, err := storage.NewLocalStackS3Storage(context.Background())
 	if err != nil {
-		pgPool.Close()
-		_ = mongoClient.Disconnect(context.Background())
-		_ = redisClient.Close()
 		return nil, fmt.Errorf("create avatar storage: %w", err)
 	}
 
 	if err := avatarStorage.EnsureBucket(context.Background()); err != nil {
-		pgPool.Close()
-		_ = mongoClient.Disconnect(context.Background())
-		_ = redisClient.Close()
 		return nil, fmt.Errorf("ensure avatar bucket: %w", err)
 	}
 
@@ -129,17 +123,10 @@ func New() (*App, error) {
 
 	categoryMod, err := module.NewCategoryModule(mongoDB, redisClient)
 	if err != nil {
-		pgPool.Close()
-		_ = mongoClient.Disconnect(context.Background())
-		_ = redisClient.Close()
 		return nil, fmt.Errorf("create category module: %w", err)
 	}
-
 	brandMod, err := module.NewBrandModule(mongoDB)
 	if err != nil {
-		pgPool.Close()
-		_ = mongoClient.Disconnect(context.Background())
-		_ = redisClient.Close()
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
 
@@ -177,9 +164,13 @@ func New() (*App, error) {
 	server := &http.Server{
 		Addr:              ":" + cfg.App.Port,
 		Handler:           router,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	success = true
 	return &App{
 		server:            server,
 		pgPool:            pgPool,

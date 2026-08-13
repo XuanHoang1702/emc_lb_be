@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"html"
 	"net/http"
 
 	"emc_lb/src/internal/service"
@@ -110,7 +111,7 @@ func (h *PaymentHandler) HandleTestCheckoutLink(ctx *gin.Context) {
 		<form method="POST" action="` + data.CheckoutURL + `" id="sepayForm" style="display:none;">`
 
 	for key, value := range data.FormValues {
-		htmlContent += `<input type="hidden" name="` + key + `" value="` + value + `">`
+		htmlContent += `<input type="hidden" name="` + html.EscapeString(key) + `" value="` + html.EscapeString(value) + `">`
 	}
 
 	htmlContent += `

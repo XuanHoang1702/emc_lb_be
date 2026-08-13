@@ -327,6 +327,23 @@ func (s *userService) UpsertAvatar(ctx context.Context, req entities.UpsertAvata
 		}
 	}
 
+	if len(normalizedRequest.FileData) > 5*1024*1024 { // 5MB limit
+		return entities.UpsertAvatarResponse{}, &res.AppError{
+			Message:    "Avatar file is too large (max 5MB)",
+			Code:       erres.UserInvalidFormat,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
+	mimeType := http.DetectContentType(normalizedRequest.FileData)
+	if mimeType != "image/jpeg" && mimeType != "image/png" && mimeType != "image/webp" {
+		return entities.UpsertAvatarResponse{}, &res.AppError{
+			Message:    "Invalid file type. Only JPEG, PNG, and WebP are allowed",
+			Code:       erres.UserInvalidFormat,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
 	avatarURL, err := s.avatarStorage.UploadAvatar(
 		ctx,
 		normalizedRequest.UserID,

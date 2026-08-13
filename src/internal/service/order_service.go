@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"emc_lb/src/internal/repository"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 var reserveStockScript = redis.NewScript(`
@@ -38,7 +40,8 @@ type OrderService interface {
 	CreateOrder(ctx context.Context, userID string, req entities.CreateOrderRequest) ([]entities.OrderResponse, error)
 	ListOrders(ctx context.Context, userID string) ([]entities.OrderResponse, error)
 	GetOrder(ctx context.Context, id string) (entities.OrderResponse, error)
-	MarkAsPaidByInvoice(ctx context.Context, invoiceNumber string) error
+	GetOrderByInvoiceNumber(ctx context.Context, invoiceNumber string) (entities.OrderResponse, error)
+	MarkAsPaidByInvoice(ctx context.Context, invoiceNumber string, paidAmount float64) error
 	UpdateOrderStatus(ctx context.Context, id string, status string) error
 }
 
@@ -48,15 +51,17 @@ type orderService struct {
 	couponService     CouponService
 	redisClient       *redis.Client
 	productCache      cache.ProductCacheStore
+	mongoClient       *mongo.Client
 }
 
-func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, couponSvc CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore) OrderService {
+func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, couponSvc CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore, mongoClient *mongo.Client) OrderService {
 	return &orderService{
 		orderRepository:   orderRepository,
 		productRepository: productRepository,
 		couponService:     couponSvc,
 		redisClient:       redisClient,
 		productCache:      productCache,
+		mongoClient:       mongoClient,
 	}
 }
 
@@ -69,174 +74,157 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 		}
 	}
 
-	var deductedItems []entities.OrderItem
-	rollback := func() {
-		for _, di := range deductedItems {
-			stockKey := fmt.Sprintf("product_stock:%s", di.ProductID)
-			if s.redisClient != nil {
-				s.redisClient.IncrBy(context.Background(), stockKey, int64(di.Quantity))
-			}
-			_ = s.productRepository.UpdateStock(context.Background(), di.ProductID, di.Quantity, -di.Quantity)
-		}
-	}
-
-	// Group items by ShopID
-	shopItems := make(map[string][]entities.OrderItem)
-	shopTotals := make(map[string]float64)
-
-	for _, item := range req.Items {
-		product, err := s.productRepository.GetByID(ctx, item.ProductID)
-		if err != nil {
-			rollback()
-			return nil, &res.AppError{
-				Message:    fmt.Sprintf("Product %s not found", item.ProductID),
-				Code:       erres.CommonBadRequest,
-				StatusCode: http.StatusBadRequest,
-			}
-		}
-
-		if !product.AllowBackorder {
-			stockKey := fmt.Sprintf("product_stock:%s", item.ProductID)
-			
-			// 1. Try to deduct from Redis
-			if s.redisClient != nil {
-				resVal, err := reserveStockScript.Run(ctx, s.redisClient, []string{stockKey}, item.Quantity).Int()
-				
-				// Cache miss: sync from DB to Redis and retry
-				if err == nil && resVal == -1 {
-					s.redisClient.Set(ctx, stockKey, product.Stock, 1*time.Hour)
-					resVal, err = reserveStockScript.Run(ctx, s.redisClient, []string{stockKey}, item.Quantity).Int()
-				}
-				
-				if err != nil {
-					rollback()
-					return nil, res.WrapError(err, "Failed to reserve stock in Redis", erres.CommonInternal)
-				}
-				
-				if resVal == -2 {
-					rollback()
-					return nil, &res.AppError{
-						Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
-						Code:       erres.CommonBadRequest,
-						StatusCode: http.StatusBadRequest,
-					}
-				}
-			} else {
-				// Fallback to strict DB check if Redis is disabled
-				if product.Stock < item.Quantity {
-					rollback()
-					return nil, &res.AppError{
-						Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
-						Code:       erres.CommonBadRequest,
-						StatusCode: http.StatusBadRequest,
-					}
-				}
-			}
-		}
-
-		// 2. Persist deduction in MongoDB
-		if err := s.productRepository.UpdateStock(ctx, item.ProductID, -item.Quantity, item.Quantity); err != nil {
-			// Rollback this current item from Redis since Mongo failed
-			if s.redisClient != nil && !product.AllowBackorder {
-				stockKey := fmt.Sprintf("product_stock:%s", item.ProductID)
-				s.redisClient.IncrBy(context.Background(), stockKey, int64(item.Quantity))
-			}
-			rollback()
-			return nil, res.WrapError(err, "Failed to update stock in DB", erres.CommonInternal)
-		}
-
-		deductedItems = append(deductedItems, item)
-
-		itemPrice := product.Price
-		shopID := product.ShopID
-		
-		shopItems[shopID] = append(shopItems[shopID], entities.OrderItem{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			Price:     itemPrice,
-		})
-		shopTotals[shopID] += itemPrice * float64(item.Quantity)
-	}
-
-	// Process Global Coupon (simple proportional split or just apply to total)
-	// For simplicity, we apply a percentage to each sub-order if it's a percentage,
-	// or proportionally if it's a fixed amount. 
-	var globalDiscountPercentage float64
-	var fixedDiscountRemaining float64
-	isFixedDiscount := false
-
-	totalAllShops := 0.0
-	for _, t := range shopTotals {
-		totalAllShops += t
-	}
-
-	if req.CouponCode != "" {
-		coupon, err := s.couponService.ValidateCouponForAmount(ctx, req.CouponCode, totalAllShops)
-		if err == nil {
-			if coupon.Type == "percentage" {
-				globalDiscountPercentage = coupon.Value / 100.0
-			} else if coupon.Type == "fixed_amount" {
-				isFixedDiscount = true
-				fixedDiscountRemaining = coupon.Value
-				if fixedDiscountRemaining > totalAllShops {
-					fixedDiscountRemaining = totalAllShops
-				}
-			}
-			go s.couponService.IncrementUsage(context.Background(), req.CouponCode, 1)
-		} else {
-			rollback()
-			return nil, err
-		}
-	}
-
-	paymentGroupID := fmt.Sprintf("PG-%s", uuid.New().String()[:8])
 	var createdOrders []entities.OrderResponse
+	// Core order creation logic, called within or without a transaction.
+	coreLogic := func(opCtx context.Context) error {
+		createdOrders = nil
 
-	for shopID, items := range shopItems {
-		subTotal := shopTotals[shopID]
-		discountAmount := 0.0
+		shopItems := make(map[string][]entities.OrderItem)
+		shopTotals := make(map[string]float64)
 
-		if globalDiscountPercentage > 0 {
-			discountAmount = subTotal * globalDiscountPercentage
-		} else if isFixedDiscount {
-			proportion := subTotal / totalAllShops
-			discountAmount = fixedDiscountRemaining * proportion
+		for _, item := range req.Items {
+			product, err := s.productRepository.GetByID(opCtx, item.ProductID)
+			if err != nil {
+				return &res.AppError{
+					Message:    fmt.Sprintf("Product %s not found", item.ProductID),
+					Code:       erres.CommonBadRequest,
+					StatusCode: http.StatusBadRequest,
+				}
+			}
+
+			if !product.AllowBackorder {
+				if product.Stock < item.Quantity {
+					return &res.AppError{
+						Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
+						Code:       erres.CommonBadRequest,
+						StatusCode: http.StatusBadRequest,
+					}
+				}
+			}
+
+			if err := s.productRepository.UpdateStock(opCtx, item.ProductID, -item.Quantity, item.Quantity); err != nil {
+				return res.WrapError(err, "Failed to update stock in DB", erres.CommonInternal)
+			}
+
+			itemPrice := product.Price
+			shopID := product.ShopID
+
+			shopItems[shopID] = append(shopItems[shopID], entities.OrderItem{
+				ProductID: item.ProductID,
+				Quantity:  item.Quantity,
+				Price:     itemPrice,
+			})
+			shopTotals[shopID] += itemPrice * float64(item.Quantity)
 		}
 
-		amountAfterDiscount := subTotal - discountAmount
-		taxAmount := amountAfterDiscount * 0.10 // 10% VAT
-		finalTotal := amountAfterDiscount + taxAmount
+		// Process coupon
+		var fixedDiscountRemaining float64
+		isFixedDiscount := false
 
-		invoiceNumber := fmt.Sprintf("INV-%s", uuid.New().String()[:8])
-		now := time.Now().UTC()
-
-		order := entities.Order{
-			PaymentGroupID:  paymentGroupID,
-			ShopID:          shopID,
-			UserID:          userID,
-			InvoiceNumber:   invoiceNumber,
-			Items:           items,
-			SubTotal:        subTotal,
-			CouponCode:      req.CouponCode,
-			DiscountAmount:  discountAmount,
-			TaxAmount:       taxAmount,
-			TotalAmount:     finalTotal,
-			Status:          "pending",
-			PaymentStatus:   "unpaid",
-			PaymentMethod:   req.PaymentMethod,
-			ShippingAddress: req.ShippingAddress,
-			ContactPhone:    req.ContactPhone,
-			CreatedAt:       now,
-			UpdatedAt:       now,
+		totalAllShops := 0.0
+		for _, t := range shopTotals {
+			totalAllShops += t
 		}
 
-		createdOrder, err := s.orderRepository.Create(ctx, order)
+		if req.CouponCode != "" {
+			coupon, err := s.couponService.ValidateCouponForAmount(opCtx, req.CouponCode, totalAllShops)
+			if err == nil {
+				if coupon.Type == "percentage" {
+					totalDiscount := totalAllShops * (coupon.Value / 100.0)
+					if coupon.MaxDiscountAmount > 0 && totalDiscount > coupon.MaxDiscountAmount {
+						totalDiscount = coupon.MaxDiscountAmount
+					}
+					isFixedDiscount = true
+					fixedDiscountRemaining = totalDiscount
+				} else if coupon.Type == "fixed_amount" {
+					isFixedDiscount = true
+					fixedDiscountRemaining = coupon.Value
+					if fixedDiscountRemaining > totalAllShops {
+						fixedDiscountRemaining = totalAllShops
+					}
+				}
+				// We will increment coupon usage at the end after successful commit
+			} else {
+				return err
+			}
+		}
+
+		paymentGroupID := fmt.Sprintf("PG-%s", strings.ToUpper(strings.ReplaceAll(uuid.New().String(), "-", ""))[:16])
+
+		for shopID, items := range shopItems {
+			subTotal := shopTotals[shopID]
+			discountAmount := 0.0
+
+			if isFixedDiscount {
+				proportion := subTotal / totalAllShops
+				discountAmount = fixedDiscountRemaining * proportion
+			}
+
+			amountAfterDiscount := subTotal - discountAmount
+			taxAmount := amountAfterDiscount * 0.10 // 10% VAT
+			finalTotal := amountAfterDiscount + taxAmount
+
+			invoiceNumber := fmt.Sprintf("INV-%s", strings.ToUpper(strings.ReplaceAll(uuid.New().String(), "-", ""))[:16])
+			now := time.Now().UTC()
+
+			order := entities.Order{
+				PaymentGroupID:  paymentGroupID,
+				ShopID:          shopID,
+				UserID:          userID,
+				InvoiceNumber:   invoiceNumber,
+				Items:           items,
+				SubTotal:        subTotal,
+				CouponCode:      req.CouponCode,
+				DiscountAmount:  discountAmount,
+				TaxAmount:       taxAmount,
+				TotalAmount:     finalTotal,
+				Status:          "pending",
+				PaymentStatus:   "unpaid",
+				PaymentMethod:   req.PaymentMethod,
+				ShippingAddress: req.ShippingAddress,
+				ContactPhone:    req.ContactPhone,
+				CreatedAt:       now,
+				UpdatedAt:       now,
+			}
+
+			createdOrder, err := s.orderRepository.Create(opCtx, order)
+			if err != nil {
+				return res.WrapError(err, "Can not create order", erres.CommonInternal)
+			}
+
+			createdOrders = append(createdOrders, mapping.ToOrderResponse(createdOrder))
+		}
+
+		if req.CouponCode != "" {
+			// Increment synchronously in the transaction path if it succeeds
+			s.couponService.IncrementUsage(opCtx, req.CouponCode, 1)
+		}
+
+		return nil
+	}
+
+	var execErr error
+	if s.mongoClient != nil {
+		// Production path: use MongoDB transaction for atomicity
+		session, err := s.mongoClient.StartSession()
 		if err != nil {
-			rollback() // Ideally we should rollback previously inserted orders too
-			return nil, res.WrapError(err, "Can not create order", erres.CommonInternal)
+			return nil, res.WrapError(err, "Failed to start database session", erres.CommonInternal)
 		}
+		defer session.EndSession(ctx)
 
-		createdOrders = append(createdOrders, mapping.ToOrderResponse(createdOrder))
+		_, execErr = session.WithTransaction(ctx, func(sessCtx context.Context) (any, error) {
+			if err := coreLogic(sessCtx); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		})
+	} else {
+		// Non-transactional fallback (unit tests or standalone mode)
+		execErr = coreLogic(ctx)
+	}
+
+	if execErr != nil {
+		return nil, execErr
 	}
 
 	// Invalidate product cache since stock has changed
@@ -268,21 +256,29 @@ func (s *orderService) GetOrder(ctx context.Context, id string) (entities.OrderR
 	return mapping.ToOrderResponse(order), nil
 }
 
-func (s *orderService) MarkAsPaidByInvoice(ctx context.Context, invoiceNumber string) error {
-	// Find order by invoice number
-	// For simplicity in this scaffold, let's assume we list and filter by invoice number.
-	// In production, you would add an index and a repository method GetByInvoiceNumber
-	orders, err := s.orderRepository.List(ctx, "")
+func (s *orderService) GetOrderByInvoiceNumber(ctx context.Context, invoiceNumber string) (entities.OrderResponse, error) {
+	order, err := s.orderRepository.GetByInvoiceNumber(ctx, invoiceNumber)
 	if err != nil {
-		return err
+		return entities.OrderResponse{}, res.WrapError(err, "Order not found", erres.CommonNotFound)
+	}
+	return mapping.ToOrderResponse(order), nil
+}
+
+func (s *orderService) MarkAsPaidByInvoice(ctx context.Context, invoiceNumber string, paidAmount float64) error {
+	order, err := s.orderRepository.GetByInvoiceNumber(ctx, invoiceNumber)
+	if err != nil {
+		return fmt.Errorf("order with invoice number %s not found: %w", invoiceNumber, err)
 	}
 
-	for _, order := range orders {
-		if order.InvoiceNumber == invoiceNumber {
-			return s.orderRepository.UpdatePaymentStatus(ctx, order.ID, "paid")
+	if order.TotalAmount != paidAmount {
+		return &res.AppError{
+			Message:    fmt.Sprintf("Payment amount mismatch. Expected: %f, Got: %f", order.TotalAmount, paidAmount),
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
 		}
 	}
-	return fmt.Errorf("order with invoice number %s not found", invoiceNumber)
+
+	return s.orderRepository.UpdatePaymentStatus(ctx, order.ID, "paid")
 }
 
 func (s *orderService) UpdateOrderStatus(ctx context.Context, id string, status string) error {

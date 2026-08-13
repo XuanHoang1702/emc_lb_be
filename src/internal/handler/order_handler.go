@@ -5,6 +5,7 @@ import (
 
 	"emc_lb/src/internal/middleware"
 	"emc_lb/src/internal/service"
+	"emc_lb/src/pkg/auth"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/res"
@@ -140,11 +141,10 @@ func (h *OrderHandler) HandleGetOrder(ctx *gin.Context) {
 	// Add check to ensure the user requesting this is either the owner or an admin
 	userID, _ := ctx.Get(middleware.ContextUserIDKey)
 	role, _ := ctx.Get(middleware.ContextRoleKey)
-	
-	if role != "admin" && order.UserID != userID.(string) {
+	if !auth.GetRBACManager().HasPermission(role.(string), "manage_orders") && order.UserID != userID.(string) {
 		res.Error(ctx, &res.AppError{
 			Message:    "Forbidden: You can only view your own orders",
-			Code:       "FORBIDDEN",
+			Code:       erres.CommonForbidden,
 			StatusCode: http.StatusForbidden,
 		})
 		return

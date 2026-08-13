@@ -179,7 +179,14 @@ func (r *couponRepository) Update(ctx context.Context, id string, update map[str
 func (r *couponRepository) IncrementUsage(ctx context.Context, code string, count int64) error {
 	result, err := r.collection.UpdateOne(
 		ctx,
-		bson.M{"code": code, "is_deleted": false},
+		bson.M{
+			"code":       code,
+			"is_deleted": false,
+			"$or": []bson.M{
+				{"usage_limit": 0},
+				{"$expr": bson.M{"$lt": bson.A{"$usage_count", "$usage_limit"}}},
+			},
+		},
 		bson.M{"$inc": bson.M{"usage_count": count}},
 	)
 	if err != nil {

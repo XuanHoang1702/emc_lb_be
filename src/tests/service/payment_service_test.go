@@ -12,7 +12,7 @@ import (
 
 // stubOrderSvc for payment testing
 type stubPaymentOrderSvc struct {
-	markAsPaidFn func(invoiceNumber string) error
+	markAsPaidFn func(invoiceNumber string, amount float64) error
 }
 
 func (s *stubPaymentOrderSvc) CreateOrder(_ context.Context, _ string, _ entities.CreateOrderRequest) ([]entities.OrderResponse, error) {
@@ -27,9 +27,13 @@ func (s *stubPaymentOrderSvc) GetOrder(_ context.Context, _ string) (entities.Or
 	return entities.OrderResponse{}, nil
 }
 
-func (s *stubPaymentOrderSvc) MarkAsPaidByInvoice(_ context.Context, invoiceNumber string) error {
+func (s *stubPaymentOrderSvc) GetOrderByInvoiceNumber(_ context.Context, invoiceNumber string) (entities.OrderResponse, error) {
+	return entities.OrderResponse{TotalAmount: 500000}, nil
+}
+
+func (s *stubPaymentOrderSvc) MarkAsPaidByInvoice(_ context.Context, invoiceNumber string, amount float64) error {
 	if s.markAsPaidFn != nil {
-		return s.markAsPaidFn(invoiceNumber)
+		return s.markAsPaidFn(invoiceNumber, amount)
 	}
 	return nil
 }
@@ -41,7 +45,7 @@ func (s *stubPaymentOrderSvc) UpdateOrderStatus(_ context.Context, _ string, _ s
 func TestProcessIPN_OrderPaid(t *testing.T) {
 	var markedInvoice string
 	orderSvc := &stubPaymentOrderSvc{
-		markAsPaidFn: func(inv string) error {
+		markAsPaidFn: func(inv string, amount float64) error {
 			markedInvoice = inv
 			return nil
 		},
