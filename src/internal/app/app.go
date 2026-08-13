@@ -54,6 +54,20 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("initialize validator: %w", err)
 	}
 
+	// Cleanup stack: on failure, close all initialized resources in reverse order.
+	var closers []func()
+	cleanup := func() {
+		for i := len(closers) - 1; i >= 0; i-- {
+			closers[i]()
+		}
+	}
+	success := false
+	defer func() {
+		if !success {
+			cleanup()
+		}
+	}()
+
 	// ── 4. Auto-migration ────────────────────────────────────────────────────
 	if err := migrate.Run(cfg.Postgres.DatabaseURL(), cfg.App.MigrationsDir); err != nil {
 		return nil, fmt.Errorf("run migrations: %w", err)
@@ -130,7 +144,7 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
 
-	orderMod := module.NewOrderModule(mongoDB, couponMod.ServiceInstance(), redisClient, productMod.CacheStore())
+	orderMod := module.NewOrderModule(mongoDB, mongoClient, couponMod.ServiceInstance(), redisClient, productMod.CacheStore())
 	paymentMod := module.NewPaymentModule(orderMod.Service())
 	cartMod := module.NewCartModule(mongoDB, productMod.Repository(), couponMod.ServiceInstance())
 	shopMod := module.NewShopModule(mongoDB, redisClient)
