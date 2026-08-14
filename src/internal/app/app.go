@@ -157,7 +157,7 @@ func New() (*App, error) {
 	paymentMod := module.NewPaymentModule(orderMod.Service())
 	cartMod := module.NewCartModule(mongoDB, productMod.Repository(), couponMod.ServiceInstance())
 	shopMod := module.NewShopModule(mongoDB, redisClient)
-	userMod := module.NewUserModule(queries, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
+	userMod := module.NewUserModule(cfg, queries, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
 
 	_ = deps // deps available for future module factories via registry
 
@@ -181,7 +181,7 @@ func New() (*App, error) {
 		paymentMod.Routes(),
 		cartMod.Route,
 		couponMod.Routes(),
-	}, redisClient, pgPool, mongoClient)
+	}, redisClient, pgPool, mongoClient, cfg)
 
 	// ── 10. HTTP server ──────────────────────────────────────────────────────
 	server := &http.Server{

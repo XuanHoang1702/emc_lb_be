@@ -2,15 +2,12 @@ package middleware
 
 import (
 	"crypto/subtle"
-	"emc_lb/src/pkg/utils"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
-func ApiKeyMiddleware() gin.HandlerFunc {
-	expectedKey := utils.GetEnvRequired("API_KEY")
-
+func ApiKeyMiddleware(expectedKey string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		apiKey := ctx.GetHeader("X-API-Key")
 		if apiKey == "" {
@@ -27,8 +24,7 @@ func ApiKeyMiddleware() gin.HandlerFunc {
 	}
 }
 
-func ApiKeyTransacionMiddleware() gin.HandlerFunc {
-	expectedKey := utils.GetEnvRequired("API_KEY_TRANSACTION")
+func ApiKeyTransacionMiddleware(expectedKey string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		apiKey := ctx.GetHeader("X-API-KEY-Transaction")
 		if apiKey == "" {

@@ -14,7 +14,7 @@ import (
 const ContextUserIDKey = "user_id"
 const ContextRoleKey = "user_role"
 
-func AccessTokenMiddleware() gin.HandlerFunc {
+func AccessTokenMiddleware(accessSecret string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		authorizationHeader := strings.TrimSpace(ctx.GetHeader("Authorization"))
 		if authorizationHeader == "" {
@@ -38,7 +38,7 @@ func AccessTokenMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		userID, role, err := utils.ParseAccessToken(strings.TrimSpace(tokenParts[1]))
+		userID, role, err := utils.ParseAccessToken(strings.TrimSpace(tokenParts[1]), accessSecret)
 		if err != nil {
 			res.Error(ctx, &res.AppError{
 				Message:    "Invalid access token",

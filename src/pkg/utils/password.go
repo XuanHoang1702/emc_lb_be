@@ -7,8 +7,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func HashPassword(password string) (string, error) {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(buildPasswordInput(password)), bcrypt.DefaultCost)
+func HashPassword(password, systemSecret string) (string, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(buildPasswordInput(password, systemSecret)), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
 	}
@@ -16,12 +16,11 @@ func HashPassword(password string) (string, error) {
 	return string(hashedPassword), nil
 }
 
-func CheckPassword(password string, hashedPassword string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(buildPasswordInput(password)))
+func CheckPassword(password, hashedPassword, systemSecret string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(buildPasswordInput(password, systemSecret)))
 }
 
-func buildPasswordInput(password string) string {
-	systemSecret := GetEnvRequired("SYSTEM_SECRET")
+func buildPasswordInput(password, systemSecret string) string {
 	sum := sha256.Sum256([]byte(password + ":" + systemSecret))
 	return hex.EncodeToString(sum[:])
 }

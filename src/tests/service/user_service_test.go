@@ -5,7 +5,10 @@ import (
 	"errors"
 	"testing"
 
+	"time"
+
 	"emc_lb/src/internal/service"
+	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/entities"
 	errs "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/res"
@@ -31,7 +34,18 @@ func newUserService(
 	avatar *mock_storage.MockAvatarStorage,
 ) service.UserService {
 	t.Helper()
-	return service.NewUserService(repo, tokenStore, otpStore, distributor, avatar)
+	cfg := &config.AppConfig{
+		App: config.AppSettings{
+			SystemSecret: "test_secret",
+		},
+		JWT: config.JWTSettings{
+			AccessSecret:  "access_secret",
+			RefreshSecret: "refresh_secret",
+			AccessTTL:     15 * time.Minute,
+			RefreshTTL:    7 * 24 * time.Hour,
+		},
+	}
+	return service.NewUserService(cfg, repo, tokenStore, otpStore, distributor, avatar)
 }
 
 // ---- Register ----

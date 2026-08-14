@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"emc_lb/src/internal/middleware"
+	"emc_lb/src/pkg/config"
 
 	_ "emc_lb/src/docs"
 	"github.com/gin-gonic/gin"
@@ -20,7 +21,7 @@ type Route interface {
 	RegisterProtected(gin.IRouter)
 }
 
-func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Client, pgPool *pgxpool.Pool, mongoClient *mongo.Client) {
+func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Client, pgPool *pgxpool.Pool, mongoClient *mongo.Client, cfg *config.AppConfig) {
 	// Public health check: simple up/down for load balancer probes
 	router.GET("/health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{
@@ -30,7 +31,7 @@ func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Clie
 	})
 
 	// Internal health check: detailed service status, protected by API key
-	router.GET("/health/detail", middleware.ApiKeyMiddleware(), func(ctx *gin.Context) {
+	router.GET("/health/detail", middleware.ApiKeyMiddleware(cfg.App.APIKey), func(ctx *gin.Context) {
 		reqCtx := ctx.Request.Context()
 		status := http.StatusOK
 		services := gin.H{}
@@ -104,7 +105,7 @@ func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Clie
 	// Swagger docs: protected by API key in production
 	docsGroup := router.Group("/docs")
 	if gin.Mode() == gin.ReleaseMode {
-		docsGroup.Use(middleware.ApiKeyMiddleware())
+		docsGroup.Use(middleware.ApiKeyMiddleware(cfg.App.APIKey))
 	}
 	docsGroup.GET("/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
@@ -117,7 +118,7 @@ func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Clie
 	}
 
 	protectedGroup := apiV1.Group("")
-	protectedGroup.Use(middleware.AccessTokenMiddleware())
+	protectedGroup.Use(middleware.AccessTokenMiddleware(cfg.JWT.AccessSecret))
 
 	for _, moduleRoute := range modules {
 		if moduleRoute == nil {

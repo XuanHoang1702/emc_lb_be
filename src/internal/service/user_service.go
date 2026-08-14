@@ -8,6 +8,7 @@ import (
 
 	"emc_lb/src/internal/repository"
 	"emc_lb/src/pkg/cache"
+	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/logs"
@@ -33,6 +34,7 @@ type UserService interface {
 }
 
 type userService struct {
+	cfg               *config.AppConfig
 	userRepository    repository.UserRepository
 	refreshTokenStore cache.RefreshTokenStore
 	emailOTPStore     cache.EmailOTPStore
@@ -40,8 +42,9 @@ type userService struct {
 	avatarStorage     storage.AvatarStorage
 }
 
-func NewUserService(userRepository repository.UserRepository, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) UserService {
+func NewUserService(cfg *config.AppConfig, userRepository repository.UserRepository, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) UserService {
 	return &userService{
+		cfg:               cfg,
 		userRepository:    userRepository,
 		refreshTokenStore: refreshTokenStore,
 		emailOTPStore:     emailOTPStore,
@@ -71,7 +74,7 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 	// 	return entities.RegisterUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
 	// }
 
-	passwordHash, err := utils.HashPassword(normalizedRequest.Password)
+	passwordHash, err := utils.HashPassword(normalizedRequest.Password, s.cfg.App.SystemSecret)
 	if err != nil {
 		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not create account now", erres.CommonInternal)
 	}
@@ -127,7 +130,7 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
 	}
 
-	if err := utils.CheckPassword(normalizedRequest.Password, user.PasswordHash); err != nil {
+	if err := utils.CheckPassword(normalizedRequest.Password, user.PasswordHash, s.cfg.App.SystemSecret); err != nil {
 		return entities.LoginUserResponse{}, &res.AppError{
 			Message:    "Invalid email or password",
 			Code:       erres.UserUnauthorized,
@@ -143,7 +146,7 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 		}
 	}
 
-	tokenPair, err := utils.GenerateTokenPair(user.ID.String(), user.Role)
+	tokenPair, err := utils.GenerateTokenPair(user.ID.String(), user.Role, s.cfg.JWT)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not login now", erres.CommonInternal)
 	}
@@ -188,7 +191,7 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
 	}
 
-	tokenPair, err := utils.GenerateTokenPair(userID, user.Role)
+	tokenPair, err := utils.GenerateTokenPair(userID, user.Role, s.cfg.JWT)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
 	}
