@@ -1,7 +1,6 @@
 run:
   timeout: 5m
   tests: false
-  go: '1.24'
 
 linters-settings:
   govet:
