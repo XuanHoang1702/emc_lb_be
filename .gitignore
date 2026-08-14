@@ -14,7 +14,7 @@ main
 # Environment
 .env
 .env.dev
-.env.develop
+.env.development
 
 # Runtime logs
 src/logs/*.log
