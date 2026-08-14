@@ -48,10 +48,10 @@ swag:
 	go run github.com/swaggo/swag/cmd/swag@latest init -g src/cmd/server/main.go -o src/docs
 
 docker-up:
-	docker compose -f docker/docker-compose.yml up -d
+	docker compose --env-file .env -f docker/docker-compose.yml up -d
 
 docker-down:
-	docker compose -f docker/docker-compose.yml down
+	docker compose --env-file .env -f docker/docker-compose.yml down
 
 migrate-create:
 	migrate create -ext sql -dir $(MIGRATE_DIR) -seq $(NAME)
