@@ -16,9 +16,9 @@ import (
 	"go.uber.org/mock/gomock"
 
 	mock_cache "emc_lb/src/tests/mocks/cache"
-	mock_mail "emc_lb/src/tests/mocks/mail"
 	mock_repository "emc_lb/src/tests/mocks/repository"
 	mock_storage "emc_lb/src/tests/mocks/storage"
+	mock_worker "emc_lb/src/tests/mocks/worker"
 )
 
 // newUserService creates a userService wired to mock dependencies.
@@ -27,11 +27,11 @@ func newUserService(
 	repo *mock_repository.MockUserRepository,
 	tokenStore *mock_cache.MockRefreshTokenStore,
 	otpStore *mock_cache.MockEmailOTPStore,
-	mailer *mock_mail.MockMailer,
+	distributor *mock_worker.MockTaskDistributor,
 	avatar *mock_storage.MockAvatarStorage,
 ) service.UserService {
 	t.Helper()
-	return service.NewUserService(repo, tokenStore, otpStore, mailer, avatar)
+	return service.NewUserService(repo, tokenStore, otpStore, distributor, avatar)
 }
 
 // ---- Register ----
@@ -43,7 +43,7 @@ func TestUserService_Register_Success(t *testing.T) {
 	repo := mock_repository.NewMockUserRepository(ctrl)
 	tokenStore := mock_cache.NewMockRefreshTokenStore(ctrl)
 	otpStore := mock_cache.NewMockEmailOTPStore(ctrl)
-	mailer := mock_mail.NewMockMailer(ctrl)
+	distributor := mock_worker.NewMockTaskDistributor(ctrl)
 	avatar := mock_storage.NewMockAvatarStorage(ctrl)
 
 	ctx := context.Background()
@@ -73,11 +73,11 @@ func TestUserService_Register_Success(t *testing.T) {
 		Save(ctx, req.Email, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	mailer.EXPECT().
-		SendEmailVerificationOTP(ctx, req.Email, req.UserName, gomock.Any(), gomock.Any()).
+	distributor.EXPECT().
+		DistributeTaskSendVerifyEmail(ctx, gomock.Any()).
 		Return(nil)
 
-	svc := newUserService(t, repo, tokenStore, otpStore, mailer, avatar)
+	svc := newUserService(t, repo, tokenStore, otpStore, distributor, avatar)
 
 	// Act
 	resp, err := svc.Register(ctx, req)
@@ -95,7 +95,7 @@ func TestUserService_Register_EmailAlreadyExists(t *testing.T) {
 	repo := mock_repository.NewMockUserRepository(ctrl)
 	tokenStore := mock_cache.NewMockRefreshTokenStore(ctrl)
 	otpStore := mock_cache.NewMockEmailOTPStore(ctrl)
-	mailer := mock_mail.NewMockMailer(ctrl)
+	distributor := mock_worker.NewMockTaskDistributor(ctrl)
 	avatar := mock_storage.NewMockAvatarStorage(ctrl)
 
 	ctx := context.Background()
@@ -110,7 +110,7 @@ func TestUserService_Register_EmailAlreadyExists(t *testing.T) {
 		GetByEmail(ctx, req.Email).
 		Return(entities.User{ID: uuid.New(), Email: req.Email}, nil)
 
-	svc := newUserService(t, repo, tokenStore, otpStore, mailer, avatar)
+	svc := newUserService(t, repo, tokenStore, otpStore, distributor, avatar)
 
 	// Act
 	_, err := svc.Register(ctx, req)
@@ -130,7 +130,7 @@ func TestUserService_Login_UserNotFound(t *testing.T) {
 	repo := mock_repository.NewMockUserRepository(ctrl)
 	tokenStore := mock_cache.NewMockRefreshTokenStore(ctrl)
 	otpStore := mock_cache.NewMockEmailOTPStore(ctrl)
-	mailer := mock_mail.NewMockMailer(ctrl)
+	distributor := mock_worker.NewMockTaskDistributor(ctrl)
 	avatar := mock_storage.NewMockAvatarStorage(ctrl)
 
 	ctx := context.Background()
@@ -144,7 +144,7 @@ func TestUserService_Login_UserNotFound(t *testing.T) {
 		GetByEmail(ctx, req.Email).
 		Return(entities.User{}, errors.New("no rows"))
 
-	svc := newUserService(t, repo, tokenStore, otpStore, mailer, avatar)
+	svc := newUserService(t, repo, tokenStore, otpStore, distributor, avatar)
 
 	// Act
 	_, err := svc.Login(ctx, req)
@@ -163,7 +163,7 @@ func TestUserService_Logout_InvalidToken(t *testing.T) {
 	repo := mock_repository.NewMockUserRepository(ctrl)
 	tokenStore := mock_cache.NewMockRefreshTokenStore(ctrl)
 	otpStore := mock_cache.NewMockEmailOTPStore(ctrl)
-	mailer := mock_mail.NewMockMailer(ctrl)
+	distributor := mock_worker.NewMockTaskDistributor(ctrl)
 	avatar := mock_storage.NewMockAvatarStorage(ctrl)
 
 	ctx := context.Background()
@@ -174,7 +174,7 @@ func TestUserService_Logout_InvalidToken(t *testing.T) {
 		GetUserID(ctx, req.RefreshToken).
 		Return("", errors.New("not found"))
 
-	svc := newUserService(t, repo, tokenStore, otpStore, mailer, avatar)
+	svc := newUserService(t, repo, tokenStore, otpStore, distributor, avatar)
 
 	// Act
 	err := svc.Logout(ctx, req)

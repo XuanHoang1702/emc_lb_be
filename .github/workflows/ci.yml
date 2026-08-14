@@ -26,7 +26,7 @@ jobs:
         run: go vet ./...
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v6
         with:
           version: latest
           args: --timeout=5m
@@ -47,6 +47,9 @@ jobs:
           cache: true
 
       - name: Run Tests
+        env:
+          SYSTEM_SECRET: "test_system_secret"
+          JWT_SECRET: "test_jwt_secret"
         run: go test -v -race -coverprofile=coverage.out ./...
 
       - name: Check Coverage
