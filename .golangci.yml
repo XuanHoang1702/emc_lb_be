@@ -1,31 +1,17 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: false
-  go: '1.25'
+  go: "1.24"
 
-linters-settings:
-  govet:
-    enable:
-      - shadow
-  gocyclo:
-    min-complexity: 15
-
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-  revive:
-    rules:
-      - name: exported
-        disabled: false
-      - name: var-naming
-        disabled: false
-      - name: unexported-return
-        disabled: false
+formatters:
+  enable:
+    - gofmt
+    - goimports
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
     - gosimple
@@ -35,14 +21,27 @@ linters:
     - typecheck
     - unused
     - gocyclo
-    - gofmt
-    - goimports
     - misspell
     - revive
+  settings:
+    govet:
+      enable-shadow: true
+    gocyclo:
+      min-complexity: 15
+    dupl:
+      threshold: 100
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    revive:
+      rules:
+        - name: exported
+        - name: var-naming
+        - name: unexported-return
+  exclusions:
+    paths:
+      - src/docs
 
 issues:
-  exclude-dirs:
-    - src/docs
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
