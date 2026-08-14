@@ -1,82 +1,94 @@
-name: E2E Tests
+      - name: Validate Environment
+        env:
+          # Secrets
+          API_KEY: ${{ secrets.API_KEY }}
+          SYSTEM_SECRET: ${{ secrets.SYSTEM_SECRET }}
 
-on:
-  push:
-    branches: ["main", "develop"]
-  pull_request:
-    branches: ["main", "develop"]
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
 
-jobs:
-  e2e-test:
-    name: End-to-End Tests
-    runs-on: ubuntu-latest
+          MONGO_INITDB_ROOT_PASSWORD: ${{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
 
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25" # Update if you use a different Go version
-          cache: true
+          ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
+          REFRESH_TOKEN_SECRET: ${{ secrets.REFRESH_TOKEN_SECRET }}
 
-      - name: Setup Environment
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+
+          SEPAY_MERCHANT_ID: ${{ secrets.SEPAY_MERCHANT_ID }}
+          SEPAY_SECRET_KEY: ${{ secrets.SEPAY_SECRET_KEY }}
+
+          # Variables
+          APP_PORT: ${{ vars.APP_PORT }}
+          POSTGRES_HOST: ${{ vars.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ vars.POSTGRES_PORT }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+
+          REDIS_HOST: ${{ vars.REDIS_HOST }}
+          REDIS_PORT: ${{ vars.REDIS_PORT }}
+
+          MONGO_INITDB_ROOT_USERNAME: ${{ vars.MONGO_INITDB_ROOT_USERNAME }}
+          MONGO_DB: ${{ vars.MONGO_DB }}
+
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_FROM_EMAIL: ${{ vars.SMTP_FROM_EMAIL }}
+
+          SEPAY_ENV: ${{ vars.SEPAY_ENV }}
+
         run: |
-          # Use the development environment variables containing dummy credentials
-          cp .env.dev .env
+          set -e
 
-      - name: Start Dependencies (Docker Compose)
-        # Only starting dependencies, not the app nodes or nginx to save resources
-        run: docker compose -f docker/docker-compose.yml up -d postgres mongo redis localstack
+          check_secret() {
+            if [ -z "$1" ]; then
+              echo "❌ Missing secret: $2"
+              exit 1
+            fi
 
-      - name: Wait for Dependencies
-        run: |
-          echo "Waiting for Postgres..."
-          for i in {1..30}; do
-            docker exec $(docker compose -f docker/docker-compose.yml ps -q postgres) pg_isready -U postgres && break || sleep 1;
-          done
-          
-          # Give Mongo, Redis and Localstack extra time to fully initialize
-          sleep 5
+            echo "✅ Secret available: $2"
+          }
 
-      - name: Install golang-migrate
-        run: |
-          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz | tar xvz
-          sudo mv migrate /usr/local/bin/migrate
+          check_variable() {
+            if [ -z "$1" ]; then
+              echo "❌ Missing variable: $2"
+              exit 1
+            fi
 
-      - name: Run Database Migrations
-        run: make migrate-up
+            echo "✅ Variable available: $2"
+          }
 
-      - name: Build and Start API Server
-        run: |
-          # Build the server
-          go build -o tmp_server ./src/cmd/server
-          
-          # Start server in the background
-          ./tmp_server &
-          
-          echo "Waiting for API server to boot up..."
-          sleep 5
+          echo "======================================"
+          echo "Checking GitHub Environment: develop"
+          echo "======================================"
 
-      - name: Run Go Integration Tests
-        run: make test
+          check_secret "$API_KEY" "API_KEY"
+          check_secret "$SYSTEM_SECRET" "SYSTEM_SECRET"
+          check_secret "$POSTGRES_PASSWORD" "POSTGRES_PASSWORD"
+          check_secret "$MONGO_INITDB_ROOT_PASSWORD" "MONGO_INITDB_ROOT_PASSWORD"
+          check_secret "$REDIS_PASSWORD" "REDIS_PASSWORD"
+          check_secret "$ACCESS_TOKEN_SECRET" "ACCESS_TOKEN_SECRET"
+          check_secret "$REFRESH_TOKEN_SECRET" "REFRESH_TOKEN_SECRET"
+          check_secret "$SMTP_USERNAME" "SMTP_USERNAME"
+          check_secret "$SMTP_PASSWORD" "SMTP_PASSWORD"
+          check_secret "$SEPAY_MERCHANT_ID" "SEPAY_MERCHANT_ID"
+          check_secret "$SEPAY_SECRET_KEY" "SEPAY_SECRET_KEY"
 
-      - name: Run External API Tests (cURL / Postman)
-        run: |
-          echo "Testing if server is accepting connections..."
-          # Basic curl to check if the port is open and server responds (even if 404)
-          curl -s http://localhost:8080/ > /dev/null || echo "Note: Root endpoint might be 404, but server is listening."
-          
-          # ---------------------------------------------------------
-          # TODO (Seeding & Postman):
-          # Place your separate test scripts / data seeding here
-          # 
-          # Example for Postman/Newman:
-          # npm install -g newman
-          # newman run ./docs/tests/collection.json -e ./docs/tests/env.json
-          # ---------------------------------------------------------
+          check_variable "$APP_PORT" "APP_PORT"
+          check_variable "$POSTGRES_HOST" "POSTGRES_HOST"
+          check_variable "$POSTGRES_PORT" "POSTGRES_PORT"
+          check_variable "$POSTGRES_USER" "POSTGRES_USER"
+          check_variable "$POSTGRES_DB" "POSTGRES_DB"
+          check_variable "$REDIS_HOST" "REDIS_HOST"
+          check_variable "$REDIS_PORT" "REDIS_PORT"
+          check_variable "$MONGO_INITDB_ROOT_USERNAME" "MONGO_INITDB_ROOT_USERNAME"
+          check_variable "$MONGO_DB" "MONGO_DB"
+          check_variable "$SMTP_HOST" "SMTP_HOST"
+          check_variable "$SMTP_PORT" "SMTP_PORT"
+          check_variable "$SMTP_FROM_EMAIL" "SMTP_FROM_EMAIL"
+          check_variable "$SEPAY_ENV" "SEPAY_ENV"
 
-      - name: Teardown Infrastructure
-        if: always()
-        run: docker compose -f docker/docker-compose.yml down
+          echo "======================================"
+          echo "✅ All required environment values exist"
+          echo "======================================"
