@@ -65,7 +65,7 @@ func (r *shopRepository) GetByOwnerID(ctx context.Context, ownerID string) (enti
 
 func (r *shopRepository) Update(ctx context.Context, id string, update map[string]any) (entities.Shop, error) {
 	update["updated_at"] = time.Now()
-	
+
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 	var updatedShop entities.Shop
 	err := r.collection.FindOneAndUpdate(

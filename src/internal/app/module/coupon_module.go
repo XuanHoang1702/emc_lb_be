@@ -3,7 +3,7 @@ package module
 import (
 	"emc_lb/src/internal/handler"
 	"emc_lb/src/internal/repository"
-	"emc_lb/src/internal/routes"
+	route "emc_lb/src/internal/routes"
 	"emc_lb/src/internal/service"
 
 	"go.mongodb.org/mongo-driver/v2/mongo"

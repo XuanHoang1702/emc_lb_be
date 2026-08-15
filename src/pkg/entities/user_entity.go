@@ -18,7 +18,7 @@ type User struct {
 	EmailVerifiedAt     time.Time
 	PhoneVerified       bool
 	PhoneVerifiedAt     time.Time
-	AvatarUrl           *string
+	AvatarURL           *string
 	Gender              *string
 	BirthDate           time.Time
 	Status              string
@@ -29,7 +29,7 @@ type User struct {
 	TotalSpent          float64
 	RewardPoints        int64
 	LastLoginAt         time.Time
-	LastLoginIp         *string
+	LastLoginIP         *string
 	FailedLoginAttempts int32
 	LockedUntil         time.Time
 	LanguageCode        *string

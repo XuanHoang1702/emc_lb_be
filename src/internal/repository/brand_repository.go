@@ -33,7 +33,6 @@ func NewBrandRepository(collection *mongo.Collection) BrandRepository {
 	return &brandRepository{collection: collection}
 }
 
-
 func (r *brandRepository) Create(ctx context.Context, brand entities.Brand) (entities.Brand, error) {
 	doc := toBrandDoc(brand)
 	result, err := r.collection.InsertOne(ctx, doc)
@@ -58,7 +57,7 @@ func (r *brandRepository) List(ctx context.Context) ([]entities.Brand, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	brands := make([]entities.Brand, 0)
 	for cursor.Next(ctx) {
@@ -132,7 +131,6 @@ func (r *brandRepository) Delete(ctx context.Context, id string, update map[stri
 	return nil
 }
 
-
 func (r *brandRepository) EnsureIndexes(ctx context.Context) error {
 	models := []mongo.IndexModel{
 		{
@@ -185,51 +183,51 @@ func (r *brandRepository) EnsureIndexes(ctx context.Context) error {
 // ============================================================================
 
 type brandDoc struct {
-	ID bson.ObjectID `bson:"_id,omitempty"`
-	Name        string `bson:"name"`
-	Slug        string `bson:"slug"`
-	Description string `bson:"description,omitempty"`
-	Logo   string `bson:"logo,omitempty"`
-	Banner string `bson:"banner,omitempty"`
-	Website     string `bson:"website,omitempty"`
-	Email       string `bson:"email,omitempty"`
-	Phone       string `bson:"phone,omitempty"`
-	Country     string `bson:"country,omitempty"`
-	CompanyName string `bson:"company_name,omitempty"`
-	MetaTitle       string   `bson:"meta_title,omitempty"`
-	MetaDescription string   `bson:"meta_description,omitempty"`
-	MetaKeywords    []string `bson:"meta_keywords,omitempty"`
-	Position   int64 `bson:"position"`
-	IsFeatured bool  `bson:"is_featured"`
-	Status    string `bson:"status"`
-	IsDeleted bool   `bson:"is_deleted"`
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
-	DeletedAt time.Time `bson:"deleted_at"`
+	ID              bson.ObjectID `bson:"_id,omitempty"`
+	Name            string        `bson:"name"`
+	Slug            string        `bson:"slug"`
+	Description     string        `bson:"description,omitempty"`
+	Logo            string        `bson:"logo,omitempty"`
+	Banner          string        `bson:"banner,omitempty"`
+	Website         string        `bson:"website,omitempty"`
+	Email           string        `bson:"email,omitempty"`
+	Phone           string        `bson:"phone,omitempty"`
+	Country         string        `bson:"country,omitempty"`
+	CompanyName     string        `bson:"company_name,omitempty"`
+	MetaTitle       string        `bson:"meta_title,omitempty"`
+	MetaDescription string        `bson:"meta_description,omitempty"`
+	MetaKeywords    []string      `bson:"meta_keywords,omitempty"`
+	Position        int64         `bson:"position"`
+	IsFeatured      bool          `bson:"is_featured"`
+	Status          string        `bson:"status"`
+	IsDeleted       bool          `bson:"is_deleted"`
+	CreatedAt       time.Time     `bson:"created_at"`
+	UpdatedAt       time.Time     `bson:"updated_at"`
+	DeletedAt       time.Time     `bson:"deleted_at"`
 }
 
 func toBrandDoc(b entities.Brand) brandDoc {
 	doc := brandDoc{
-		Name: b.Name,
-		Slug: b.Slug,
-		Description: b.Description,
-		Logo: b.Logo,
-		Banner: b.Banner,
-		Website: b.Website,
-		Email: b.Email,
-		Phone: b.Phone,
-		Country: b.Country,
-		CompanyName: b.CompanyName,
-		MetaTitle: b.MetaTitle,
+		Name:            b.Name,
+		Slug:            b.Slug,
+		Description:     b.Description,
+		Logo:            b.Logo,
+		Banner:          b.Banner,
+		Website:         b.Website,
+		Email:           b.Email,
+		Phone:           b.Phone,
+		Country:         b.Country,
+		CompanyName:     b.CompanyName,
+		MetaTitle:       b.MetaTitle,
 		MetaDescription: b.MetaDescription,
-		MetaKeywords: b.MetaKeywords,
-		Position: b.Position,
-		IsFeatured: b.IsFeatured,
-		Status: b.Status,
-		IsDeleted: b.IsDeleted,
-		CreatedAt: b.CreatedAt,
-		UpdatedAt: b.UpdatedAt,
-		DeletedAt: b.DeletedAt,
+		MetaKeywords:    b.MetaKeywords,
+		Position:        b.Position,
+		IsFeatured:      b.IsFeatured,
+		Status:          b.Status,
+		IsDeleted:       b.IsDeleted,
+		CreatedAt:       b.CreatedAt,
+		UpdatedAt:       b.UpdatedAt,
+		DeletedAt:       b.DeletedAt,
 	}
 	if b.ID != "" {
 		if id, err := bson.ObjectIDFromHex(b.ID); err == nil {
@@ -241,27 +239,27 @@ func toBrandDoc(b entities.Brand) brandDoc {
 
 func toBrandEntity(doc brandDoc) entities.Brand {
 	return entities.Brand{
-		ID: doc.ID.Hex(),
-		Name: doc.Name,
-		Slug: doc.Slug,
-		Description: doc.Description,
-		Logo: doc.Logo,
-		Banner: doc.Banner,
-		Website: doc.Website,
-		Email: doc.Email,
-		Phone: doc.Phone,
-		Country: doc.Country,
-		CompanyName: doc.CompanyName,
-		MetaTitle: doc.MetaTitle,
+		ID:              doc.ID.Hex(),
+		Name:            doc.Name,
+		Slug:            doc.Slug,
+		Description:     doc.Description,
+		Logo:            doc.Logo,
+		Banner:          doc.Banner,
+		Website:         doc.Website,
+		Email:           doc.Email,
+		Phone:           doc.Phone,
+		Country:         doc.Country,
+		CompanyName:     doc.CompanyName,
+		MetaTitle:       doc.MetaTitle,
 		MetaDescription: doc.MetaDescription,
-		MetaKeywords: doc.MetaKeywords,
-		Position: doc.Position,
-		IsFeatured: doc.IsFeatured,
-		Status: doc.Status,
-		IsDeleted: doc.IsDeleted,
-		CreatedAt: doc.CreatedAt,
-		UpdatedAt: doc.UpdatedAt,
-		DeletedAt: doc.DeletedAt,
+		MetaKeywords:    doc.MetaKeywords,
+		Position:        doc.Position,
+		IsFeatured:      doc.IsFeatured,
+		Status:          doc.Status,
+		IsDeleted:       doc.IsDeleted,
+		CreatedAt:       doc.CreatedAt,
+		UpdatedAt:       doc.UpdatedAt,
+		DeletedAt:       doc.DeletedAt,
 	}
 }
 
@@ -325,4 +323,3 @@ func (r *brandRepository) existsByField(ctx context.Context, field string, value
 
 	return true, nil
 }
-

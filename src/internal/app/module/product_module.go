@@ -44,4 +44,3 @@ func (m *ProductModule) CacheStore() cache.ProductCacheStore {
 func (m *ProductModule) Routes() route.Route {
 	return m.routes
 }
-

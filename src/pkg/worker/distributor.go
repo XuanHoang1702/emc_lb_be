@@ -38,7 +38,7 @@ func (distributor *RedisTaskDistributor) DistributeTaskSendVerifyEmail(
 	}
 
 	task := asynq.NewTask(TaskSendVerifyEmail, jsonPayload, opts...)
-	
+
 	_, err = distributor.client.EnqueueContext(ctx, task)
 	if err != nil {
 		return fmt.Errorf("failed to enqueue task: %w", err)

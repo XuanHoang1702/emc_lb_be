@@ -47,7 +47,7 @@ func (r *cartRepository) Save(ctx context.Context, cart entities.Cart) (entities
 	doc.UpdatedAt = time.Now().UTC()
 
 	opts := options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)
-	
+
 	if doc.CreatedAt.IsZero() {
 		doc.CreatedAt = doc.UpdatedAt
 	}

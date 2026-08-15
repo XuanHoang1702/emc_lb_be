@@ -52,7 +52,7 @@ func New() (*App, error) {
 	logs.Init(cfg.App.LogLevel, cfg.App.Mode)
 
 	// ── 3. Input validation ──────────────────────────────────────────────────
-	if err := validation.InitValidator(); err != nil {
+	if err = validation.InitValidator(); err != nil {
 		return nil, fmt.Errorf("initialize validator: %w", err)
 	}
 
@@ -71,7 +71,7 @@ func New() (*App, error) {
 	}()
 
 	// ── 4. Auto-migration ────────────────────────────────────────────────────
-	if err := migrate.Run(cfg.Postgres.DatabaseURL(), cfg.App.MigrationsDir); err != nil {
+	if err = migrate.Run(cfg.Postgres.DatabaseURL(), cfg.App.MigrationsDir); err != nil {
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
@@ -99,7 +99,7 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("create avatar storage: %w", err)
 	}
 
-	if err := avatarStorage.EnsureBucket(context.Background()); err != nil {
+	if err = avatarStorage.EnsureBucket(context.Background()); err != nil {
 		return nil, fmt.Errorf("ensure avatar bucket: %w", err)
 	}
 

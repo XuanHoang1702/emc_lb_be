@@ -148,6 +148,7 @@ func (s *categoryService) GetByID(ctx context.Context, id string) (entities.Cate
 	return result, nil
 }
 
+//nolint:gocyclo
 func (s *categoryService) Update(ctx context.Context, id string, req entities.UpdateCategoryRequest) (entities.CategoryResponse, error) {
 	if len(id) != 24 {
 		return entities.CategoryResponse{}, newBadRequestError("Category id is invalid")

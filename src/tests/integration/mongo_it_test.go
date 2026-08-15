@@ -10,11 +10,11 @@ import (
 	"emc_lb/src/internal/repository"
 	"emc_lb/src/pkg/entities"
 
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 )
 
 func couponEntity(code string, now time.Time) entities.Coupon {

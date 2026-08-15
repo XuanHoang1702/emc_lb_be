@@ -225,7 +225,7 @@ func (h *UserHandler) HandleUpsertAvatar(ctx *gin.Context) {
 		res.Error(ctx, err)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	fileData, err := io.ReadAll(file)
 	if err != nil {

@@ -8,11 +8,12 @@ import (
 	"emc_lb/src/pkg/config"
 
 	_ "emc_lb/src/docs"
+
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -128,4 +129,3 @@ func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Clie
 		moduleRoute.RegisterProtected(protectedGroup)
 	}
 }
-

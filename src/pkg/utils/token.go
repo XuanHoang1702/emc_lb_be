@@ -108,8 +108,8 @@ func generateAccessJWT(userID string, role string, issuedAt time.Time, ttl time.
 }
 
 func buildTokenSecret(secret string) []byte {
-	// For simplicity, we just hash the secret itself if no systemSecret is present, 
-	// or we can just return the secret as bytes. To match previous behavior where 
+	// For simplicity, we just hash the secret itself if no systemSecret is present,
+	// or we can just return the secret as bytes. To match previous behavior where
 	// systemSecret = AccessSecret, we can just hash it against itself.
 	sum := sha256.Sum256([]byte(secret + ":" + secret))
 	return sum[:]

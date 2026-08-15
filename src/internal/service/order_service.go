@@ -64,7 +64,7 @@ func NewOrderService(orderRepository repository.OrderRepository, productReposito
 		mongoClient:       mongoClient,
 	}
 }
-
+//nolint:gocyclo
 func (s *orderService) CreateOrder(ctx context.Context, userID string, req entities.CreateOrderRequest) ([]entities.OrderResponse, error) {
 	if len(req.Items) == 0 {
 		return nil, &res.AppError{
@@ -129,14 +129,15 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 		if req.CouponCode != "" {
 			coupon, err := s.couponService.ValidateCouponForAmount(opCtx, req.CouponCode, totalAllShops)
 			if err == nil {
-				if coupon.Type == "percentage" {
+				switch coupon.Type {
+				case "percentage":
 					totalDiscount := totalAllShops * (coupon.Value / 100.0)
 					if coupon.MaxDiscountAmount > 0 && totalDiscount > coupon.MaxDiscountAmount {
 						totalDiscount = coupon.MaxDiscountAmount
 					}
 					isFixedDiscount = true
 					fixedDiscountRemaining = totalDiscount
-				} else if coupon.Type == "fixed_amount" {
+				case "fixed_amount":
 					isFixedDiscount = true
 					fixedDiscountRemaining = coupon.Value
 					if fixedDiscountRemaining > totalAllShops {
@@ -197,7 +198,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 
 		if req.CouponCode != "" {
 			// Increment synchronously in the transaction path if it succeeds
-			s.couponService.IncrementUsage(opCtx, req.CouponCode, 1)
+			_ = s.couponService.IncrementUsage(opCtx, req.CouponCode, 1)
 		}
 
 		return nil

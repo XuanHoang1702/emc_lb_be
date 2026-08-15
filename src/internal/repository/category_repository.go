@@ -32,7 +32,6 @@ func NewCategoryRepository(collection *mongo.Collection) CategoryRepository {
 	return &categoryRepository{collection: collection}
 }
 
-
 func (r *categoryRepository) Create(ctx context.Context, category entities.Category) (entities.Category, error) {
 	doc := toCategoryDoc(category)
 	result, err := r.collection.InsertOne(ctx, doc)
@@ -58,7 +57,7 @@ func (r *categoryRepository) List(ctx context.Context) ([]entities.Category, err
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	categories := make([]entities.Category, 0)
 	for cursor.Next(ctx) {
@@ -132,7 +131,6 @@ func (r *categoryRepository) Delete(ctx context.Context, id string, update map[s
 	return nil
 }
 
-
 func (r *categoryRepository) EnsureIndexes(ctx context.Context) error {
 	models := []mongo.IndexModel{
 		{
@@ -181,40 +179,40 @@ func (r *categoryRepository) EnsureIndexes(ctx context.Context) error {
 // ============================================================================
 
 type categoryDoc struct {
-	ID bson.ObjectID `bson:"_id,omitempty"`
-	Name        string `bson:"name"`
-	Slug        string `bson:"slug"`
-	Description string `bson:"description,omitempty"`
-	ParentID *bson.ObjectID `bson:"parent_id,omitempty"`
-	Thumbnail string `bson:"thumbnail,omitempty"`
-	Banner    string `bson:"banner,omitempty"`
-	MetaTitle       string `bson:"meta_title,omitempty"`
-	MetaDescription string `bson:"meta_description,omitempty"`
-	Position   int64 `bson:"position"`
-	IsFeatured bool  `bson:"is_featured"`
-	Status    string `bson:"status"`
-	IsDeleted bool   `bson:"is_deleted"`
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
-	DeletedAt time.Time `bson:"deleted_at"`
+	ID              bson.ObjectID  `bson:"_id,omitempty"`
+	Name            string         `bson:"name"`
+	Slug            string         `bson:"slug"`
+	Description     string         `bson:"description,omitempty"`
+	ParentID        *bson.ObjectID `bson:"parent_id,omitempty"`
+	Thumbnail       string         `bson:"thumbnail,omitempty"`
+	Banner          string         `bson:"banner,omitempty"`
+	MetaTitle       string         `bson:"meta_title,omitempty"`
+	MetaDescription string         `bson:"meta_description,omitempty"`
+	Position        int64          `bson:"position"`
+	IsFeatured      bool           `bson:"is_featured"`
+	Status          string         `bson:"status"`
+	IsDeleted       bool           `bson:"is_deleted"`
+	CreatedAt       time.Time      `bson:"created_at"`
+	UpdatedAt       time.Time      `bson:"updated_at"`
+	DeletedAt       time.Time      `bson:"deleted_at"`
 }
 
 func toCategoryDoc(c entities.Category) categoryDoc {
 	doc := categoryDoc{
-		Name: c.Name,
-		Slug: c.Slug,
-		Description: c.Description,
-		Thumbnail: c.Thumbnail,
-		Banner: c.Banner,
-		MetaTitle: c.MetaTitle,
+		Name:            c.Name,
+		Slug:            c.Slug,
+		Description:     c.Description,
+		Thumbnail:       c.Thumbnail,
+		Banner:          c.Banner,
+		MetaTitle:       c.MetaTitle,
 		MetaDescription: c.MetaDescription,
-		Position: c.Position,
-		IsFeatured: c.IsFeatured,
-		Status: c.Status,
-		IsDeleted: c.IsDeleted,
-		CreatedAt: c.CreatedAt,
-		UpdatedAt: c.UpdatedAt,
-		DeletedAt: c.DeletedAt,
+		Position:        c.Position,
+		IsFeatured:      c.IsFeatured,
+		Status:          c.Status,
+		IsDeleted:       c.IsDeleted,
+		CreatedAt:       c.CreatedAt,
+		UpdatedAt:       c.UpdatedAt,
+		DeletedAt:       c.DeletedAt,
 	}
 	if c.ID != "" {
 		if id, err := bson.ObjectIDFromHex(c.ID); err == nil {
@@ -231,21 +229,21 @@ func toCategoryDoc(c entities.Category) categoryDoc {
 
 func toCategoryEntity(doc categoryDoc) entities.Category {
 	c := entities.Category{
-		ID: doc.ID.Hex(),
-		Name: doc.Name,
-		Slug: doc.Slug,
-		Description: doc.Description,
-		Thumbnail: doc.Thumbnail,
-		Banner: doc.Banner,
-		MetaTitle: doc.MetaTitle,
+		ID:              doc.ID.Hex(),
+		Name:            doc.Name,
+		Slug:            doc.Slug,
+		Description:     doc.Description,
+		Thumbnail:       doc.Thumbnail,
+		Banner:          doc.Banner,
+		MetaTitle:       doc.MetaTitle,
 		MetaDescription: doc.MetaDescription,
-		Position: doc.Position,
-		IsFeatured: doc.IsFeatured,
-		Status: doc.Status,
-		IsDeleted: doc.IsDeleted,
-		CreatedAt: doc.CreatedAt,
-		UpdatedAt: doc.UpdatedAt,
-		DeletedAt: doc.DeletedAt,
+		Position:        doc.Position,
+		IsFeatured:      doc.IsFeatured,
+		Status:          doc.Status,
+		IsDeleted:       doc.IsDeleted,
+		CreatedAt:       doc.CreatedAt,
+		UpdatedAt:       doc.UpdatedAt,
+		DeletedAt:       doc.DeletedAt,
 	}
 	if doc.ParentID != nil && !doc.ParentID.IsZero() {
 		pid := doc.ParentID.Hex()
@@ -310,4 +308,3 @@ func (r *categoryRepository) existsByField(ctx context.Context, field string, va
 
 	return true, nil
 }
-

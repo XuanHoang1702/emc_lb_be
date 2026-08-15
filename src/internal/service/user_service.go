@@ -130,7 +130,7 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
 	}
 
-	if err := utils.CheckPassword(normalizedRequest.Password, user.PasswordHash, s.cfg.App.SystemSecret); err != nil {
+	if err = utils.CheckPassword(normalizedRequest.Password, user.PasswordHash, s.cfg.App.SystemSecret); err != nil {
 		return entities.LoginUserResponse{}, &res.AppError{
 			Message:    "Invalid email or password",
 			Code:       erres.UserUnauthorized,
@@ -317,7 +317,7 @@ func (s *userService) UpsertAvatar(ctx context.Context, req entities.UpsertAvata
 		}
 	}
 
-	if _, err := s.userRepository.GetIDByID(ctx, userID); err != nil {
+	if _, err = s.userRepository.GetIDByID(ctx, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return entities.UpsertAvatarResponse{}, &res.AppError{
 				Message:    "User not found",

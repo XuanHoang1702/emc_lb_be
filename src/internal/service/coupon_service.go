@@ -31,7 +31,7 @@ func NewCouponService(repo repository.CouponRepository) CouponService {
 
 func (s *couponService) Create(ctx context.Context, req entities.CreateCouponRequest) (entities.CouponResponse, error) {
 	code := strings.ToUpper(strings.TrimSpace(req.Code))
-	
+
 	// Check if already exists
 	if existing, err := s.couponRepository.GetByCode(ctx, code); err == nil && existing.ID != "" {
 		return entities.CouponResponse{}, &res.AppError{

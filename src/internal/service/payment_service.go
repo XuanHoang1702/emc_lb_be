@@ -188,7 +188,7 @@ func (s *paymentService) ProcessIPN(ctx context.Context, req entities.SePayIPNRe
 	}
 
 	var paidAmount float64
-	fmt.Sscanf(req.Order.OrderAmount, "%f", &paidAmount)
+	_, _ = fmt.Sscanf(req.Order.OrderAmount, "%f", &paidAmount)
 
 	log.Printf("SePay IPN: ORDER_PAID invoice=%s amount=%s method=%s",
 		invoiceNumber, req.Order.OrderAmount, req.Transaction.PaymentMethod)

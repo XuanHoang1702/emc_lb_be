@@ -56,7 +56,7 @@ func (r *orderRepository) List(ctx context.Context, userID string) ([]entities.O
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	orders := make([]entities.Order, 0)
 	for cursor.Next(ctx) {

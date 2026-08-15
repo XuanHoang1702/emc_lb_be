@@ -166,4 +166,3 @@ func (h *ProductHandler) HandleDelete(ctx *gin.Context) {
 		"message": "Product deleted successfully",
 	})
 }
-

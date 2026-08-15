@@ -26,7 +26,7 @@ FROM users
 WHERE email = $1 AND is_deleted = false`)
 	userCreateSQL = regexp.QuoteMeta(`
 INSERT INTO users (`)
-	userVerifySQL  = regexp.QuoteMeta(`UPDATE users
+	userVerifySQL = regexp.QuoteMeta(`UPDATE users
 SET
     email_verified = true,
     email_verified_at = NOW(),

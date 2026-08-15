@@ -45,4 +45,3 @@ func (m *OrderModule) Routes() route.Route {
 func (m *OrderModule) Service() service.OrderService {
 	return m.orderService
 }
-

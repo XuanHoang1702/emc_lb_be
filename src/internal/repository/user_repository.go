@@ -71,13 +71,13 @@ func (r *userRepository) Create(ctx context.Context, user entities.User) (entiti
 	if err != nil {
 		return entities.User{}, err
 	}
-	
+
 	user.ID = row.ID
 	user.Email = row.Email
 	user.UserName = row.UserName
 	user.Phone = row.Phone
 	user.CreatedAt = row.CreatedAt
-	
+
 	return user, nil
 }
 

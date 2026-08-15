@@ -35,4 +35,3 @@ func NewCategoryModule(database *mongo.Database, redisClient *redis.Client) (*Ca
 func (m *CategoryModule) Routes() route.Route {
 	return m.routes
 }
-

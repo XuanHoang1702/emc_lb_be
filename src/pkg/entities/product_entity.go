@@ -83,23 +83,23 @@ type CreateProductRequest struct {
 }
 
 type UpdateProductRequest struct {
-	Name           *string   `json:"name" binding:"omitempty,min=1,max=255"`
-	Slug           *string   `json:"slug" binding:"omitempty,min=1,max=255,slug"`
-	Description    *string   `json:"description" binding:"omitempty,max=2000"`
-	ShortDesc      *string   `json:"short_desc" binding:"omitempty,max=500"`
-	Price          *float64  `json:"price" binding:"omitempty,gte=0"`
-	OriginalPrice  *float64  `json:"original_price" binding:"omitempty,gte=0"`
-	SKU            *string   `json:"sku" binding:"omitempty,max=100"`
-	Stock          *int64    `json:"stock" binding:"omitempty,gte=0"`
-	AllowBackorder *bool     `json:"allow_backorder"`
-	Thumbnail      *string   `json:"thumbnail" binding:"omitempty,max=2048"`
-	Images         []string  `json:"images"`
-	Tags           []string  `json:"tags"`
-	Status         *string   `json:"status" binding:"omitempty,oneof=active draft inactive"`
-	IsFeatured     *bool     `json:"is_featured"`
-	CategoryID     *string   `json:"category_id" binding:"omitempty"`
-	BrandID        *string   `json:"brand_id" binding:"omitempty"`
-	ShopID         *string   `json:"shop_id" binding:"omitempty"`
+	Name           *string  `json:"name" binding:"omitempty,min=1,max=255"`
+	Slug           *string  `json:"slug" binding:"omitempty,min=1,max=255,slug"`
+	Description    *string  `json:"description" binding:"omitempty,max=2000"`
+	ShortDesc      *string  `json:"short_desc" binding:"omitempty,max=500"`
+	Price          *float64 `json:"price" binding:"omitempty,gte=0"`
+	OriginalPrice  *float64 `json:"original_price" binding:"omitempty,gte=0"`
+	SKU            *string  `json:"sku" binding:"omitempty,max=100"`
+	Stock          *int64   `json:"stock" binding:"omitempty,gte=0"`
+	AllowBackorder *bool    `json:"allow_backorder"`
+	Thumbnail      *string  `json:"thumbnail" binding:"omitempty,max=2048"`
+	Images         []string `json:"images"`
+	Tags           []string `json:"tags"`
+	Status         *string  `json:"status" binding:"omitempty,oneof=active draft inactive"`
+	IsFeatured     *bool    `json:"is_featured"`
+	CategoryID     *string  `json:"category_id" binding:"omitempty"`
+	BrandID        *string  `json:"brand_id" binding:"omitempty"`
+	ShopID         *string  `json:"shop_id" binding:"omitempty"`
 }
 
 type ProductResponse struct {

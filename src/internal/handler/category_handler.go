@@ -153,4 +153,3 @@ func (h *CategoryHandler) HandleDelete(ctx *gin.Context) {
 
 	res.Success(ctx, http.StatusOK, "success_category_deleted")
 }
-

@@ -141,7 +141,7 @@ func (r *couponRepository) List(ctx context.Context) ([]entities.Coupon, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	var coupons []entities.Coupon
 	for cursor.Next(ctx) {

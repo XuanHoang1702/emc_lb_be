@@ -88,5 +88,3 @@ func toShopResponse(shop entities.Shop) entities.ShopResponse {
 		UpdatedAt:   shop.UpdatedAt,
 	}
 }
-
-

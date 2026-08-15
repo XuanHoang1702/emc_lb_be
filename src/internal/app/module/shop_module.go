@@ -46,4 +46,3 @@ func (m *ShopModule) RegisterProtected(router gin.IRouter) {
 		shopGroup.GET("/my-shop", m.handler.GetMyShop)
 	}
 }
-

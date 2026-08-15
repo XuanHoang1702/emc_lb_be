@@ -30,7 +30,7 @@ func RegisterCustomValidation(v *validator.Validate) {
 		"edu.vn":        true,
 		"abc.com":       true,
 	}
-	v.RegisterValidation("email_advanced", func(fl validator.FieldLevel) bool {
+	_ = v.RegisterValidation("email_advanced", func(fl validator.FieldLevel) bool {
 		email := fl.Field().String()
 
 		parts := strings.Split(email, "@")
@@ -43,7 +43,7 @@ func RegisterCustomValidation(v *validator.Validate) {
 		return !blockedDomains[domain]
 	})
 
-	v.RegisterValidation("password_strong", func(fl validator.FieldLevel) bool {
+	_ = v.RegisterValidation("password_strong", func(fl validator.FieldLevel) bool {
 		password := fl.Field().String()
 
 		if len(password) < 8 {
@@ -58,23 +58,23 @@ func RegisterCustomValidation(v *validator.Validate) {
 		return hasLower && hasUpper && hasDigit && hasSpecial
 	})
 
-	v.RegisterValidation("phone", func(fl validator.FieldLevel) bool {
+	_ = v.RegisterValidation("phone", func(fl validator.FieldLevel) bool {
 		phone := fl.Field().String()
 		phoneRegex := regexp.MustCompile(`^\+?[0-9]{10,15}$`)
 		return phoneRegex.MatchString(phone)
 	})
 
 	var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:[-.][a-z0-9]+)*$`)
-	v.RegisterValidation("slug", func(fl validator.FieldLevel) bool {
+	_ = v.RegisterValidation("slug", func(fl validator.FieldLevel) bool {
 		return slugRegex.MatchString(fl.Field().String())
 	})
 
 	var searchRegex = regexp.MustCompile(`^[a-zA-Z0-9\s]+$`)
-	v.RegisterValidation("search", func(fl validator.FieldLevel) bool {
+	_ = v.RegisterValidation("search", func(fl validator.FieldLevel) bool {
 		return searchRegex.MatchString(fl.Field().String())
 	})
 
-	v.RegisterValidation("min_int", func(fl validator.FieldLevel) bool {
+	_ = v.RegisterValidation("min_int", func(fl validator.FieldLevel) bool {
 		minStr := fl.Param()
 		minVal, err := strconv.ParseInt(minStr, 10, 64)
 		if err != nil {
@@ -84,7 +84,7 @@ func RegisterCustomValidation(v *validator.Validate) {
 		return fl.Field().Int() >= minVal
 	})
 
-	v.RegisterValidation("max_int", func(fl validator.FieldLevel) bool {
+	_ = v.RegisterValidation("max_int", func(fl validator.FieldLevel) bool {
 		maxStr := fl.Param()
 		maxVal, err := strconv.ParseInt(maxStr, 10, 64)
 		if err != nil {
@@ -94,7 +94,7 @@ func RegisterCustomValidation(v *validator.Validate) {
 		return fl.Field().Int() <= maxVal
 	})
 
-	v.RegisterValidation("file_ext", func(fl validator.FieldLevel) bool {
+	_ = v.RegisterValidation("file_ext", func(fl validator.FieldLevel) bool {
 		filename := fl.Field().String()
 
 		allowedStr := fl.Param()

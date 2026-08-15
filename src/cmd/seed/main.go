@@ -68,17 +68,17 @@ func main() {
 		{"product", "create"},
 		{"product", "update"},
 		{"product", "delete"},
-		
+
 		// Category
 		{"category", "create"},
 		{"category", "update"},
 		{"category", "delete"},
-		
+
 		// Brand
 		{"brand", "create"},
 		{"brand", "update"},
 		{"brand", "delete"},
-		
+
 		// Order
 		{"manage_orders", "manage"},
 	}
@@ -89,7 +89,7 @@ func main() {
 		if p.Resource == "manage_orders" {
 			permName = "manage_orders"
 		}
-		
+
 		perm, err := queries.CreatePermission(ctx, sqlc.CreatePermissionParams{
 			Code:        permName,
 			Name:        permName,
@@ -100,7 +100,7 @@ func main() {
 		} else {
 			permMap[permName] = perm
 			log.Printf("Created permission: %s", permName)
-			
+
 			// Auto assign to admin
 			_ = queries.AssignPermissionToRole(ctx, sqlc.AssignPermissionToRoleParams{
 				RoleCode:       "admin",

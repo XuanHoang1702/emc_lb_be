@@ -62,7 +62,7 @@ func (s *cartService) AddItem(ctx context.Context, userID string, req entities.A
 	// Check if item already exists in cart
 	itemExists := false
 	var currentQty int64 = 0
-	
+
 	for i, item := range cart.Items {
 		if item.ProductID == req.ProductID {
 			itemExists = true
@@ -72,7 +72,7 @@ func (s *cartService) AddItem(ctx context.Context, userID string, req entities.A
 		}
 	}
 
-	if !product.AllowBackorder && product.Stock < (currentQty + req.Quantity) {
+	if !product.AllowBackorder && product.Stock < (currentQty+req.Quantity) {
 		return entities.CartResponse{}, &res.AppError{
 			Message:    fmt.Sprintf("Not enough stock. Only %d available.", product.Stock),
 			Code:       erres.CommonBadRequest,
@@ -81,10 +81,7 @@ func (s *cartService) AddItem(ctx context.Context, userID string, req entities.A
 	}
 
 	if !itemExists {
-		cart.Items = append(cart.Items, entities.CartItem{
-			ProductID: req.ProductID,
-			Quantity:  req.Quantity,
-		})
+		cart.Items = append(cart.Items, entities.CartItem(req))
 	}
 
 	savedCart, err := s.cartRepository.Save(ctx, cart)
@@ -105,7 +102,7 @@ func (s *cartService) UpdateItem(ctx context.Context, userID string, productID s
 	for i, item := range cart.Items {
 		if item.ProductID == productID {
 			itemExists = true
-			
+
 			// Verify stock
 			product, pErr := s.productRepository.GetByID(ctx, productID)
 			if pErr == nil && !product.AllowBackorder && product.Stock < req.Quantity {
@@ -115,7 +112,7 @@ func (s *cartService) UpdateItem(ctx context.Context, userID string, productID s
 					StatusCode: http.StatusBadRequest,
 				}
 			}
-			
+
 			cart.Items[i].Quantity = req.Quantity
 			break
 		}
@@ -218,13 +215,14 @@ func (s *cartService) buildCartResponse(ctx context.Context, cart entities.Cart)
 	if cart.CouponCode != "" {
 		coupon, err := s.couponService.ValidateCouponForAmount(ctx, cart.CouponCode, response.SubTotal)
 		if err == nil {
-			if coupon.Type == "percentage" {
+			switch coupon.Type {
+			case "percentage":
 				discount := response.SubTotal * (coupon.Value / 100.0)
 				if coupon.MaxDiscountAmount > 0 && discount > coupon.MaxDiscountAmount {
 					discount = coupon.MaxDiscountAmount
 				}
 				response.DiscountAmount = discount
-			} else if coupon.Type == "fixed_amount" {
+			case "fixed_amount":
 				response.DiscountAmount = coupon.Value
 				if response.DiscountAmount > response.SubTotal {
 					response.DiscountAmount = response.SubTotal
