@@ -19,7 +19,7 @@ func (r *PaymentRoute) RegisterPublic(router gin.IRouter) {
 	paymentGroup := router.Group("/payment")
 	{
 		// IPN endpoint for SePay Payment Gateway
-		paymentGroup.POST("/ipn", middleware.ApiKeyTransacionMiddleware("a"), r.paymentHandler.HandleSepayIPN)
+		paymentGroup.POST("/ipn", middleware.APIKeyTransacionMiddleware("a"), r.paymentHandler.HandleSepayIPN)
 
 		// Test endpoint: Generates a clickable link/redirect for testing the payment gateway in browser
 		paymentGroup.GET("/test-checkout", r.paymentHandler.HandleTestCheckoutLink)

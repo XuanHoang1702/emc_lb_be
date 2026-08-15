@@ -165,6 +165,7 @@ func (s *productService) GetByID(ctx context.Context, id string) (entities.Produ
 
 	return result, nil
 }
+
 //nolint:gocyclo
 func (s *productService) Update(ctx context.Context, id string, req entities.UpdateProductRequest) (entities.ProductResponse, error) {
 	updateData := make(map[string]any)

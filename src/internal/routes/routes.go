@@ -32,7 +32,7 @@ func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Clie
 	})
 
 	// Internal health check: detailed service status, protected by API key
-	router.GET("/health/detail", middleware.ApiKeyMiddleware(cfg.App.APIKey), func(ctx *gin.Context) {
+	router.GET("/health/detail", middleware.APIKeyMiddleware(cfg.App.APIKey), func(ctx *gin.Context) {
 		reqCtx := ctx.Request.Context()
 		status := http.StatusOK
 		services := gin.H{}
@@ -106,7 +106,7 @@ func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Clie
 	// Swagger docs: protected by API key in production
 	docsGroup := router.Group("/docs")
 	if gin.Mode() == gin.ReleaseMode {
-		docsGroup.Use(middleware.ApiKeyMiddleware(cfg.App.APIKey))
+		docsGroup.Use(middleware.APIKeyMiddleware(cfg.App.APIKey))
 	}
 	docsGroup.GET("/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

@@ -64,6 +64,7 @@ func NewOrderService(orderRepository repository.OrderRepository, productReposito
 		mongoClient:       mongoClient,
 	}
 }
+
 //nolint:gocyclo
 func (s *orderService) CreateOrder(ctx context.Context, userID string, req entities.CreateOrderRequest) ([]entities.OrderResponse, error) {
 	if len(req.Items) == 0 {

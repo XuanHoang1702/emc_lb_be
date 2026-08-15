@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ApiKeyMiddleware(expectedKey string) gin.HandlerFunc {
+func APIKeyMiddleware(expectedKey string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		apiKey := ctx.GetHeader("X-API-Key")
 		if apiKey == "" {
@@ -24,7 +24,7 @@ func ApiKeyMiddleware(expectedKey string) gin.HandlerFunc {
 	}
 }
 
-func ApiKeyTransacionMiddleware(expectedKey string) gin.HandlerFunc {
+func APIKeyTransacionMiddleware(expectedKey string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		apiKey := ctx.GetHeader("X-API-KEY-Transaction")
 		if apiKey == "" {

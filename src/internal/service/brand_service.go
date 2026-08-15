@@ -113,6 +113,7 @@ func (s *brandService) GetByID(ctx context.Context, id string) (entities.BrandRe
 
 	return mapping.ToBrandResponse(brand), nil
 }
+
 //nolint:gocyclo
 func (s *brandService) Update(ctx context.Context, id string, req entities.UpdateBrandRequest) (entities.BrandResponse, error) {
 	if len(id) != 24 {
