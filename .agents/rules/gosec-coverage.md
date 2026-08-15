@@ -33,3 +33,8 @@ When running `gosec` in CI, beware of the following false positives or strict ru
    - **Cause:** `go test -coverprofile=coverage.out ./...` defaults to only computing coverage for the package currently being tested. If your tests are separated into a `src/tests/...` directory, the coverage for your application logic `src/internal/...` will be 0%.
    - **Fix:** ALWAYS use the `-coverpkg=./...` flag when running tests across a project with separated test directories.
    - **Example:** `go test -v -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...`
+
+2. **Unrealistic Initial Coverage Thresholds:**
+   - **Cause:** Setting `COVERAGE_THRESHOLD: "70"` on an existing codebase with very few unit tests will block all CI/CD pipelines, because writing tests to jump from 12% to 70% in one PR is impractical.
+   - **Fix:** Set the `COVERAGE_THRESHOLD` to a realistic baseline (e.g., `12%`) that the project currently meets.
+   - **Continuous Improvement:** All *new code* must include tests. Incrementally raise the threshold as the project's overall test coverage grows, rather than enforcing a strict 70% Day 1 rule.
