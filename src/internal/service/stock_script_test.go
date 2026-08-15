@@ -16,6 +16,22 @@ func newTestRedis(t *testing.T) *redis.Client {
 	t.Cleanup(func() { _ = client.Close() })
 	return client
 }
+var reserveStockScript = redis.NewScript(`
+local stock_key = KEYS[1]
+local qty = tonumber(ARGV[1])
+local current = redis.call('GET', stock_key)
+
+if current == false then
+	return -1 -- Not found in Redis (cache miss)
+end
+
+if tonumber(current) >= qty then
+	redis.call('DECRBY', stock_key, qty)
+	return 1 -- Success
+else
+	return -2 -- Insufficient stock
+end
+`)
 
 func runStockScript(t *testing.T, client *redis.Client, key string, qty int) (int, error) {
 	t.Helper()
