@@ -38,3 +38,9 @@ When running `gosec` in CI, beware of the following false positives or strict ru
    - **Cause:** Setting `COVERAGE_THRESHOLD: "70"` on an existing codebase with very few unit tests will block all CI/CD pipelines, because writing tests to jump from 12% to 70% in one PR is impractical.
    - **Fix:** Set the `COVERAGE_THRESHOLD` to a realistic baseline (e.g., `12%`) that the project currently meets.
    - **Continuous Improvement:** All *new code* must include tests. Incrementally raise the threshold as the project's overall test coverage grows, rather than enforcing a strict 70% Day 1 rule.
+
+## 🐳 Docker Build & Go Version Mismatch
+
+1. **`go mod download` fails in Docker with `go.mod requires go >= 1.X.Y (running go 1.X.Z)`:**
+   - **Cause:** When updating the `go` directive in `go.mod` (e.g., to fix standard library vulnerabilities via `govulncheck`), the Docker image version in your `Dockerfile` and `Dockerfile.worker` must also be updated to match. Using a generic tag like `golang:1.25-alpine` can sometimes pull an outdated cached version, while using a strict tag like `golang:1.25.0-alpine` will break if `go.mod` requires `1.25.13`.
+   - **Fix:** ALWAYS update the `FROM` statements in all Dockerfiles to explicitly use the exact patch version required by `go.mod` (e.g., `FROM golang:1.25.13-alpine AS builder` and `FROM golang:1.25.13-bookworm AS builder`).
