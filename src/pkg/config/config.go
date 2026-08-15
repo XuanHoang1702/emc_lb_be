@@ -30,13 +30,13 @@ type AppConfig struct {
 }
 
 type AppSettings struct {
-	Port           string
-	Mode           string // "debug" | "release"
-	SystemSecret   string
-	APIKey         string
-	CORSOrigins    string
-	LogLevel       string // "debug" | "info" | "warn" | "error"
-	MigrationsDir  string
+	Port          string
+	Mode          string // "debug" | "release"
+	SystemSecret  string
+	APIKey        string
+	CORSOrigins   string
+	LogLevel      string // "debug" | "info" | "warn" | "error"
+	MigrationsDir string
 }
 
 type PostgresSettings struct {
@@ -179,7 +179,7 @@ func load() (*AppConfig, error) {
 		Payment: PaymentSettings{
 			SepayEnv:        getEnv("SEPAY_ENV", "sandbox"),
 			SepayMerchantID: getEnv("CLIENT_KEY", ""),
-			SepaySecretKey:  getEnv("SEPAY_SECRET_KEY", ""),
+			SepaySecretKey:  getEnv("SECRET_KEY", ""),
 			SepaySuccessURL: getEnv("SEPAY_SUCCESS_URL", ""),
 			SepayErrorURL:   getEnv("SEPAY_ERROR_URL", ""),
 			SepayCancelURL:  getEnv("SEPAY_CANCEL_URL", ""),

@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"strings"
 
+	appconfig "emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/res"
-	appconfig "emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/utils"
 )
 
@@ -23,19 +23,19 @@ type PaymentService interface {
 }
 
 type paymentService struct {
-	merchantID  string
-	secretKey   string
-	env         string // "sandbox" or "production"
-	successURL  string
-	errorURL    string
-	cancelURL   string
+	merchantID   string
+	secretKey    string
+	env          string // "sandbox" or "production"
+	successURL   string
+	errorURL     string
+	cancelURL    string
 	orderService OrderService
 }
 
 func NewPaymentService(orderService OrderService) PaymentService {
 	env := utils.GetEnv("SEPAY_ENV", "sandbox")
 	merchantID := utils.GetEnv("CLIENT_KEY", "")
-	secretKey := utils.GetEnv("SEPAY_SECRET_KEY", "")
+	secretKey := utils.GetEnv("SECRET_KEY", "")
 	successURL := utils.GetEnv("SEPAY_SUCCESS_URL", "")
 	errorURL := utils.GetEnv("SEPAY_ERROR_URL", "")
 	cancelURL := utils.GetEnv("SEPAY_CANCEL_URL", "")

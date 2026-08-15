@@ -31,7 +31,7 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
 
           CLIENT_KEY: ${{ secrets.CLIENT_KEY }}
-          SEPAY_SECRET_KEY: ${{ secrets.SEPAY_SECRET_KEY }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
 
           # Variables
           APP_PORT: ${{ vars.APP_PORT }}
@@ -87,7 +87,7 @@ jobs:
           check_secret "$SMTP_USERNAME" "SMTP_USERNAME"
           check_secret "$SMTP_PASSWORD" "SMTP_PASSWORD"
           check_secret "$CLIENT_KEY" "CLIENT_KEY"
-          check_secret "$SEPAY_SECRET_KEY" "SEPAY_SECRET_KEY"
+          check_secret "$SECRET_KEY" "SECRET_KEY"
 
           check_variable "$APP_PORT" "APP_PORT"
           check_variable "$POSTGRES_HOST" "POSTGRES_HOST"
