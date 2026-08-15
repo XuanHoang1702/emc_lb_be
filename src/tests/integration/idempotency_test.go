@@ -53,7 +53,7 @@ func TestDuplicateOrderRequest(t *testing.T) {
 	defer client.Close()
 
 	ctx := context.Background()
-	idempotencyKey := "idem_key_uuid_87654321"
+	idempotencyKey := "test-idempotency-key-1"
 	cacheKey := "idem_order:" + idempotencyKey
 
 	// Attempt 1

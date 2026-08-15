@@ -24,3 +24,7 @@ vendor/
 
 # IDE
 .vscode/
+
+#document
+/docs
+/.agents
