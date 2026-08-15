@@ -19,23 +19,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-var reserveStockScript = redis.NewScript(`
-local stock_key = KEYS[1]
-local qty = tonumber(ARGV[1])
-local current = redis.call('GET', stock_key)
-
-if current == false then
-	return -1 -- Not found in Redis (cache miss)
-end
-
-if tonumber(current) >= qty then
-	redis.call('DECRBY', stock_key, qty)
-	return 1 -- Success
-else
-	return -2 -- Insufficient stock
-end
-`)
-
 type OrderService interface {
 	CreateOrder(ctx context.Context, userID string, req entities.CreateOrderRequest) ([]entities.OrderResponse, error)
 	ListOrders(ctx context.Context, userID string) ([]entities.OrderResponse, error)
