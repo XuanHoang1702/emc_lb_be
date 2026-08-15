@@ -16,6 +16,7 @@ func newTestRedis(t *testing.T) *redis.Client {
 	t.Cleanup(func() { _ = client.Close() })
 	return client
 }
+
 var reserveStockScript = redis.NewScript(`
 local stock_key = KEYS[1]
 local qty = tonumber(ARGV[1])
