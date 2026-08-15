@@ -74,7 +74,7 @@ func Version(databaseURL, migrationsDir string) (uint, bool, error) {
 	}
 
 	defer func() {
-		m.Close() //nolint:errcheck
+		_, _ = m.Close()
 	}()
 
 	return m.Version()

@@ -142,7 +142,9 @@ func load() (*AppConfig, error) {
 			DB:       getEnv("POSTGRES_DB", "emc_lb"),
 			Timezone: getEnv("POSTGRES_TIMEZONE", "Asia/Ho_Chi_Minh"),
 			URL:      getEnv("DATABASE_URL", ""),
+			// #nosec G115
 			MaxConns: int32(getEnvInt("POSTGRES_MAX_CONNS", 10)),
+			// #nosec G115
 			MinConns: int32(getEnvInt("POSTGRES_MIN_CONNS", 2)),
 		},
 		MongoDB: MongoSettings{

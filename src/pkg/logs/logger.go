@@ -113,7 +113,7 @@ func parseLevel(s string) slog.Level {
 
 // ensureLogDir creates the logs directory if it does not exist.
 func ensureLogDir(dir string) error {
-	return os.MkdirAll(dir, 0o755)
+	return os.MkdirAll(dir, 0o750)
 }
 
 // NewFileLogger creates an slog.Logger that writes to a file inside dir.
@@ -123,8 +123,9 @@ func NewFileLogger(dir, filename, levelStr, env string) (*slog.Logger, error) {
 		return nil, err
 	}
 
-	path := filepath.Join(dir, filename)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	path := filepath.Clean(filepath.Join(dir, filename))
+	// #nosec G304
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
 	}

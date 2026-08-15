@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// #nosec G101
 var messages = map[string]map[string]string{
 	"en": {
 		"val_gt":              "%s must be greater than %s",

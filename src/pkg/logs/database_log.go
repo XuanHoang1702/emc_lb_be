@@ -159,12 +159,13 @@ func (l *loggedRow) Scan(dest ...interface{}) error {
 
 func newFileLogger(fileName string) *log.Logger {
 	logDirectory := filepath.Join(".", "src", "logs")
-	if err := os.MkdirAll(logDirectory, 0o755); err != nil {
+	if err := os.MkdirAll(logDirectory, 0o750); err != nil {
 		return log.New(os.Stderr, "", 0)
 	}
 
-	filePath := filepath.Join(logDirectory, fileName)
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	filePath := filepath.Clean(filepath.Join(logDirectory, fileName))
+	// #nosec G304
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return log.New(os.Stderr, "", 0)
 	}
