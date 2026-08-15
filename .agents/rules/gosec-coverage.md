@@ -44,3 +44,7 @@ When running `gosec` in CI, beware of the following false positives or strict ru
 1. **`go mod download` fails in Docker with `go.mod requires go >= 1.X.Y (running go 1.X.Z)`:**
    - **Cause:** When updating the `go` directive in `go.mod` (e.g., to fix standard library vulnerabilities via `govulncheck`), the Docker image version in your `Dockerfile` and `Dockerfile.worker` must also be updated to match. Using a generic tag like `golang:1.25-alpine` can sometimes pull an outdated cached version, while using a strict tag like `golang:1.25.0-alpine` will break if `go.mod` requires `1.25.13`.
    - **Fix:** ALWAYS update the `FROM` statements in all Dockerfiles to explicitly use the exact patch version required by `go.mod` (e.g., `FROM golang:1.25.13-alpine AS builder` and `FROM golang:1.25.13-bookworm AS builder`).
+
+2. **Docker build fails with `"/app/.env": not found`:**
+   - **Cause:** CI environments often use `.dockerignore` to ignore `.env` files (to prevent leaking secrets). If a `Dockerfile` attempts to `COPY --from=builder /app/.env .env`, the build will fail because the file was never copied into the builder stage.
+   - **Fix:** Do NOT bake `.env` files into Docker images. Delete any `COPY .env` instructions from Dockerfiles. Environment variables must be injected at runtime (e.g., via `docker run --env-file`, Kubernetes ConfigMaps, or GitHub Actions Secrets).

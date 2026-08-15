@@ -21,7 +21,5 @@ RUN apk add --no-cache tzdata ca-certificates
 # Copy the binary
 COPY --from=builder /app/emc_worker .
 
-# Copy environment variables or config files if needed (assuming .env is mounted or provided)
-COPY --from=builder /app/.env .env
 
 CMD ["/app/emc_worker"]
