@@ -30,7 +30,7 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
 
-          SEPAY_MERCHANT_ID: ${{ secrets.SEPAY_MERCHANT_ID }}
+          CLIENT_KEY: ${{ secrets.CLIENT_KEY }}
           SEPAY_SECRET_KEY: ${{ secrets.SEPAY_SECRET_KEY }}
 
           # Variables
@@ -86,7 +86,7 @@ jobs:
           check_secret "$REFRESH_TOKEN_SECRET" "REFRESH_TOKEN_SECRET"
           check_secret "$SMTP_USERNAME" "SMTP_USERNAME"
           check_secret "$SMTP_PASSWORD" "SMTP_PASSWORD"
-          check_secret "$SEPAY_MERCHANT_ID" "SEPAY_MERCHANT_ID"
+          check_secret "$CLIENT_KEY" "CLIENT_KEY"
           check_secret "$SEPAY_SECRET_KEY" "SEPAY_SECRET_KEY"
 
           check_variable "$APP_PORT" "APP_PORT"

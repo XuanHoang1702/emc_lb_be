@@ -34,7 +34,7 @@ type paymentService struct {
 
 func NewPaymentService(orderService OrderService) PaymentService {
 	env := utils.GetEnv("SEPAY_ENV", "sandbox")
-	merchantID := utils.GetEnv("SEPAY_MERCHANT_ID", "")
+	merchantID := utils.GetEnv("CLIENT_KEY", "")
 	secretKey := utils.GetEnv("SEPAY_SECRET_KEY", "")
 	successURL := utils.GetEnv("SEPAY_SUCCESS_URL", "")
 	errorURL := utils.GetEnv("SEPAY_ERROR_URL", "")

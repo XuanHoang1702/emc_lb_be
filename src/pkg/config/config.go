@@ -178,7 +178,7 @@ func load() (*AppConfig, error) {
 		},
 		Payment: PaymentSettings{
 			SepayEnv:        getEnv("SEPAY_ENV", "sandbox"),
-			SepayMerchantID: getEnv("SEPAY_MERCHANT_ID", ""),
+			SepayMerchantID: getEnv("CLIENT_KEY", ""),
 			SepaySecretKey:  getEnv("SEPAY_SECRET_KEY", ""),
 			SepaySuccessURL: getEnv("SEPAY_SUCCESS_URL", ""),
 			SepayErrorURL:   getEnv("SEPAY_ERROR_URL", ""),
