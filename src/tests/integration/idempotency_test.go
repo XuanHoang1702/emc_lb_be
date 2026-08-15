@@ -53,7 +53,7 @@ func TestDuplicateOrderRequest(t *testing.T) {
 	defer client.Close()
 
 	ctx := context.Background()
-	idempotencyKey := "test-idempotency-key-1"
+	idempotencyKey := "test-idempotency-key-1" // gitleaks:allow
 	cacheKey := "idem_order:" + idempotencyKey
 
 	// Attempt 1
