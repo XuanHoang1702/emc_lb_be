@@ -2,73 +2,444 @@ name: CI
 
 on:
   push:
-    branches: ["main", "develop"]
+    branches:
+      - main
+      - develop
 
   pull_request:
-    branches: ["main", "develop"]
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25"
+  GOLANGCI_LINT_VERSION: "v2.12.2"
+  COVERAGE_THRESHOLD: "70"
 
 jobs:
-  lint:
-    name: Lint Code
+
+  # ============================================================
+  # 1. FORMAT
+  # ============================================================
+  format:
+    name: Check Formatting
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Go
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
-           go-version: "1.25"
-           cache: true
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Check gofmt
+        run: |
+          files=$(gofmt -l .)
+
+          if [ -n "$files" ]; then
+            echo "The following files are not formatted:"
+            echo "$files"
+            echo ""
+            echo "Run: gofmt -w ."
+            exit 1
+          fi
+
+          echo "gofmt check passed."
+
+
+  # ============================================================
+  # 2. STATIC ANALYSIS
+  # ============================================================
+  lint:
+    name: Lint & Static Analysis
+    runs-on: ubuntu-latest
+    needs: format
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Verify go.mod and go.sum
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
 
       - name: Go Vet
         run: go vet ./...
 
-      - name: golangci-lint
+      - name: GolangCI Lint
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.12.2
-          args: --timeout=5m
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          args: --timeout=10m
+          install-mode: binary
 
-  test:
-    name: Run Tests
+      - name: Go Vulnerability Check
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+
+  # ============================================================
+  # 3. UNIT TEST
+  # ============================================================
+  unit-test:
+    name: Unit Tests
     runs-on: ubuntu-latest
     needs: lint
 
+    env:
+      SYSTEM_SECRET: "test_system_secret"
+      JWT_SECRET: "test_jwt_secret"
+      APP_ENV: "test"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Go
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Run Tests
-        env:
-          SYSTEM_SECRET: "test_system_secret"
-          JWT_SECRET: "test_jwt_secret"
-        run: go test -v -race -coverprofile=coverage.out ./...
+      - name: Run Unit Tests
+        run: |
+          go test -v \
+            -covermode=atomic \
+            -coverprofile=coverage.out \
+            ./...
 
       - name: Check Coverage
-        run: go tool cover -func=coverage.out
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | \
+            grep '^total:' | \
+            awk '{print substr($3, 1, length($3)-1)}')
 
-  build:
-    name: Build Project
+          echo "======================================"
+          echo "Total Coverage: ${COVERAGE}%"
+          echo "Required: ${COVERAGE_THRESHOLD}%"
+          echo "======================================"
+
+          awk -v coverage="$COVERAGE" \
+              -v threshold="$COVERAGE_THRESHOLD" \
+              'BEGIN {
+                if (coverage < threshold) {
+                  print "Coverage is below required threshold."
+                  exit 1
+                }
+
+                print "Coverage check passed."
+              }'
+
+      - name: Upload Coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 7
+
+
+  # ============================================================
+  # 4. RACE DETECTOR
+  # ============================================================
+  race-test:
+    name: Race Detector
     runs-on: ubuntu-latest
-    needs: test
+    needs: lint
+
+    env:
+      SYSTEM_SECRET: "test_system_secret"
+      JWT_SECRET: "test_jwt_secret"
+      APP_ENV: "test"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Go
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run Race Tests
+        run: |
+          go test \
+            -race \
+            -count=1 \
+            ./...
+
+
+  # ============================================================
+  # 5. INTEGRATION TEST
+  # ============================================================
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    services:
+
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+
+        options: >-
+          --health-cmd="pg_isready -U postgres -d app_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      APP_ENV: test
+
+      SYSTEM_SECRET: "test_system_secret"
+      JWT_SECRET: "test_jwt_secret"
+
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: app_test
+      DB_SSLMODE: disable
+
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U postgres; then
+              echo "PostgreSQL is ready."
+              break
+            fi
+
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Wait for Redis
+        run: |
+          for i in {1..30}; do
+            if redis-cli -h localhost -p 6379 ping | grep -q PONG; then
+              echo "Redis is ready."
+              break
+            fi
+
+            echo "Waiting for Redis..."
+            sleep 2
+          done
+
+      - name: Run Integration Tests
+        run: |
+          go test -v \
+            -race \
+            -count=1 \
+            ./...
+
+
+  # ============================================================
+  # 6. SECURITY
+  # ============================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run Govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: Run Gosec
+        uses: securego/gosec@master
+        with:
+          args: ./...
+
+
+  # ============================================================
+  # 7. BUILD
+  # ============================================================
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs:
+      - unit-test
+      - race-test
+      - integration-test
+      - security
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
       - name: Build
-        run: go build -v ./...
+        run: |
+          go build \
+            -trimpath \
+            -buildvcs=true \
+            -o bin/server \
+            ./src/cmd/server
+
+          go build \
+            -trimpath \
+            -buildvcs=true \
+            -o bin/worker \
+            ./src/cmd/worker
+
+      - name: Verify Binary
+        run: |
+          test -f bin/server || {
+            echo "Server build artifact was not created."
+            exit 1
+          }
+          test -f bin/worker || {
+            echo "Worker build artifact was not created."
+            exit 1
+          }
+
+          echo "Build successful."
+
+
+  # ============================================================
+  # 8. DOCKER BUILD
+  # ============================================================
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Docker Build App
+        run: |
+          docker build \
+            --pull \
+            -f docker/Dockerfile \
+            -t app:ci-${{ github.sha }} \
+            .
+
+      - name: Docker Build Worker
+        run: |
+          docker build \
+            --pull \
+            -f docker/Dockerfile.worker \
+            -t worker:ci-${{ github.sha }} \
+            .
+
+
+  # ============================================================
+  # 9. FINAL QUALITY GATE
+  # ============================================================
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+
+    needs:
+      - format
+      - lint
+      - unit-test
+      - race-test
+      - integration-test
+      - security
+      - build
+      - docker
+
+    if: always()
+
+    steps:
+      - name: Evaluate CI
+        run: |
+          echo "======================================"
+          echo "CI QUALITY GATE"
+          echo "======================================"
+
+          echo "Format:       ${{ needs.format.result }}"
+          echo "Lint:         ${{ needs.lint.result }}"
+          echo "Unit Test:    ${{ needs.unit-test.result }}"
+          echo "Race Test:    ${{ needs.race-test.result }}"
+          echo "Integration:  ${{ needs.integration-test.result }}"
+          echo "Security:     ${{ needs.security.result }}"
+          echo "Build:        ${{ needs.build.result }}"
+          echo "Docker:       ${{ needs.docker.result }}"
+          echo "======================================"
+
+          if [[ "${{ needs.format.result }}" != "success" ||
+                "${{ needs.lint.result }}" != "success" ||
+                "${{ needs.unit-test.result }}" != "success" ||
+                "${{ needs.race-test.result }}" != "success" ||
+                "${{ needs.integration-test.result }}" != "success" ||
+                "${{ needs.security.result }}" != "success" ||
+                "${{ needs.build.result }}" != "success" ||
+                "${{ needs.docker.result }}" != "success" ]]; then
+
+            echo "QUALITY GATE FAILED"
+            exit 1
+          fi
+
+          echo "QUALITY GATE PASSED"
