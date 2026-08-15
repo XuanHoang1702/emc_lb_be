@@ -24,7 +24,8 @@ linters:
     - revive
   settings:
     govet:
-      enable-shadow: true
+      enable:
+        - shadow
     gocyclo:
       min-complexity: 15
     dupl:
