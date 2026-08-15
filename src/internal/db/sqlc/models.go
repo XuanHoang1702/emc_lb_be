@@ -12,6 +12,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Permission struct {
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type Role struct {
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type RolePermission struct {
+	RoleCode       string    `json:"role_code"`
+	PermissionCode string    `json:"permission_code"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 type User struct {
 	ID                  uuid.UUID      `json:"id"`
 	Email               string         `json:"email"`

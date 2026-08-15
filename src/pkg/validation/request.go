@@ -8,7 +8,7 @@ import (
 
 func BindJSON(ctx *gin.Context, dst any, validationCode res.ErrorCode) error {
 	if err := ctx.ShouldBindJSON(dst); err != nil {
-		appErr := HandleValidationErrors(err).(*res.AppError)
+		appErr := HandleValidationErrors(ctx, err).(*res.AppError)
 		if validationCode != "" {
 			appErr.Code = validationCode
 			if appErr.StatusCode == 0 {
@@ -22,7 +22,7 @@ func BindJSON(ctx *gin.Context, dst any, validationCode res.ErrorCode) error {
 
 func BindURI(ctx *gin.Context, dst any, validationCode res.ErrorCode) error {
 	if err := ctx.ShouldBindUri(dst); err != nil {
-		appErr := HandleValidationErrors(err).(*res.AppError)
+		appErr := HandleValidationErrors(ctx, err).(*res.AppError)
 		if validationCode != "" {
 			appErr.Code = validationCode
 		}
@@ -33,7 +33,7 @@ func BindURI(ctx *gin.Context, dst any, validationCode res.ErrorCode) error {
 
 func BindQuery(ctx *gin.Context, dst any, validationCode res.ErrorCode) error {
 	if err := ctx.ShouldBindQuery(dst); err != nil {
-		appErr := HandleValidationErrors(err).(*res.AppError)
+		appErr := HandleValidationErrors(ctx, err).(*res.AppError)
 		if validationCode != "" {
 			appErr.Code = validationCode
 		}

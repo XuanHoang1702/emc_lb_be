@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"net/smtp"
 
+	appconfig "emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/utils"
 )
 
@@ -35,12 +36,22 @@ type verificationOTPEmailData struct {
 }
 
 func NewSMTPMailer() Mailer {
+	// Prefer typed config; fall back to env vars if config not yet loaded
 	host := utils.GetEnv("SMTP_HOST", "")
 	port := utils.GetEnv("SMTP_PORT", "")
 	username := utils.GetEnv("SMTP_USERNAME", "")
 	password := utils.GetEnv("SMTP_PASSWORD", "")
 	fromEmail := utils.GetEnv("SMTP_FROM_EMAIL", "")
 	fromName := utils.GetEnv("SMTP_FROM_NAME", "EMC LB")
+
+	if cfg, err := appconfig.Load(); err == nil {
+		host = cfg.Mail.Host
+		port = fmt.Sprintf("%d", cfg.Mail.Port)
+		username = cfg.Mail.Username
+		password = cfg.Mail.Password
+		fromEmail = cfg.Mail.FromEmail
+		fromName = cfg.Mail.FromName
+	}
 
 	if host == "" || port == "" || username == "" || password == "" || fromEmail == "" {
 		return noopMailer{}

@@ -14,6 +14,7 @@ func GenerateOTP(length int) (string, error) {
 			return "", err
 		}
 
+		// #nosec G115
 		digits[index] = byte('0' + number.Int64())
 	}
 

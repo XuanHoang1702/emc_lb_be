@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"emc_lb/src/internal/repository"
+	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
+	"emc_lb/src/pkg/mapping"
 	"emc_lb/src/pkg/res"
 	"emc_lb/src/pkg/utils"
 
@@ -25,10 +27,11 @@ type CategoryService interface {
 
 type categoryService struct {
 	categoryRepository repository.CategoryRepository
+	cacheStore         cache.CategoryCacheStore
 }
 
-func NewCategoryService(categoryRepository repository.CategoryRepository) CategoryService {
-	return &categoryService{categoryRepository: categoryRepository}
+func NewCategoryService(categoryRepository repository.CategoryRepository, cacheStore cache.CategoryCacheStore) CategoryService {
+	return &categoryService{categoryRepository: categoryRepository, cacheStore: cacheStore}
 }
 
 func (s *categoryService) Create(ctx context.Context, req entities.CreateCategoryRequest) (entities.CategoryResponse, error) {
@@ -87,10 +90,20 @@ func (s *categoryService) Create(ctx context.Context, req entities.CreateCategor
 		return entities.CategoryResponse{}, res.WrapError(err, "Can not create category now", erres.CommonInternal)
 	}
 
-	return repository.ToCategoryResponse(category), nil
+	if s.cacheStore != nil {
+		_ = s.cacheStore.InvalidateAll(ctx)
+	}
+
+	return mapping.ToCategoryResponse(category), nil
 }
 
 func (s *categoryService) List(ctx context.Context) ([]entities.CategoryResponse, error) {
+	if s.cacheStore != nil {
+		if cached, err := s.cacheStore.GetAll(ctx); err == nil {
+			return cached, nil
+		}
+	}
+
 	categories, err := s.categoryRepository.List(ctx)
 	if err != nil {
 		return nil, res.WrapError(err, "Can not get categories now", erres.CommonInternal)
@@ -98,7 +111,11 @@ func (s *categoryService) List(ctx context.Context) ([]entities.CategoryResponse
 
 	responses := make([]entities.CategoryResponse, 0, len(categories))
 	for _, category := range categories {
-		responses = append(responses, repository.ToCategoryResponse(category))
+		responses = append(responses, mapping.ToCategoryResponse(category))
+	}
+
+	if s.cacheStore != nil {
+		_ = s.cacheStore.SetAll(ctx, responses)
 	}
 
 	return responses, nil
@@ -109,6 +126,12 @@ func (s *categoryService) GetByID(ctx context.Context, id string) (entities.Cate
 		return entities.CategoryResponse{}, newBadRequestError("Category id is invalid")
 	}
 
+	if s.cacheStore != nil {
+		if cached, err := s.cacheStore.GetByID(ctx, id); err == nil {
+			return cached, nil
+		}
+	}
+
 	category, err := s.categoryRepository.GetByID(ctx, id)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -117,9 +140,15 @@ func (s *categoryService) GetByID(ctx context.Context, id string) (entities.Cate
 		return entities.CategoryResponse{}, res.WrapError(err, "Can not get category now", erres.CommonInternal)
 	}
 
-	return repository.ToCategoryResponse(category), nil
+	result := mapping.ToCategoryResponse(category)
+	if s.cacheStore != nil {
+		_ = s.cacheStore.SetByID(ctx, id, result)
+	}
+
+	return result, nil
 }
 
+//nolint:gocyclo
 func (s *categoryService) Update(ctx context.Context, id string, req entities.UpdateCategoryRequest) (entities.CategoryResponse, error) {
 	if len(id) != 24 {
 		return entities.CategoryResponse{}, newBadRequestError("Category id is invalid")
@@ -205,7 +234,11 @@ func (s *categoryService) Update(ctx context.Context, id string, req entities.Up
 		return entities.CategoryResponse{}, res.WrapError(err, "Can not update category now", erres.CommonInternal)
 	}
 
-	return repository.ToCategoryResponse(category), nil
+	if s.cacheStore != nil {
+		_ = s.cacheStore.Invalidate(ctx, id)
+	}
+
+	return mapping.ToCategoryResponse(category), nil
 }
 
 func (s *categoryService) Delete(ctx context.Context, id string) error {
@@ -224,6 +257,10 @@ func (s *categoryService) Delete(ctx context.Context, id string) error {
 			return newNotFoundError("Category not found")
 		}
 		return res.WrapError(err, "Can not delete category now", erres.CommonInternal)
+	}
+
+	if s.cacheStore != nil {
+		_ = s.cacheStore.Invalidate(ctx, id)
 	}
 
 	return nil

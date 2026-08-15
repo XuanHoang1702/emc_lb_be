@@ -1,0 +1,1829 @@
+basePath: /
+definitions:
+  emc_lb_src_pkg_entities.AddCartItemRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        minimum: 1
+        type: integer
+    required:
+    - product_id
+    - quantity
+    type: object
+  emc_lb_src_pkg_entities.ApplyCouponRequest:
+    properties:
+      coupon_code:
+        type: string
+    required:
+    - coupon_code
+    type: object
+  emc_lb_src_pkg_entities.CheckoutInitRequest:
+    properties:
+      cancel_url:
+        type: string
+      customer_id:
+        type: string
+      error_url:
+        type: string
+      order_amount:
+        type: number
+      order_description:
+        type: string
+      order_invoice_number:
+        type: string
+      payment_method:
+        description: BANK_TRANSFER, CARD, etc.
+        type: string
+      success_url:
+        type: string
+    required:
+    - order_amount
+    - order_description
+    - order_invoice_number
+    type: object
+  emc_lb_src_pkg_entities.CreateBrandRequest:
+    properties:
+      banner:
+        maxLength: 2048
+        type: string
+      company_name:
+        maxLength: 255
+        type: string
+      country:
+        maxLength: 120
+        type: string
+      description:
+        maxLength: 2000
+        type: string
+      email:
+        maxLength: 255
+        type: string
+      is_featured:
+        type: boolean
+      logo:
+        maxLength: 2048
+        type: string
+      meta_description:
+        maxLength: 500
+        type: string
+      meta_keywords:
+        items:
+          type: string
+        type: array
+      meta_title:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      phone:
+        type: string
+      position:
+        type: integer
+      slug:
+        maxLength: 255
+        minLength: 1
+        type: string
+      status:
+        enum:
+        - active
+        - inactive
+        - draft
+        type: string
+      website:
+        maxLength: 2048
+        type: string
+    required:
+    - name
+    type: object
+  emc_lb_src_pkg_entities.CreateCategoryRequest:
+    properties:
+      banner:
+        maxLength: 2048
+        type: string
+      description:
+        maxLength: 2000
+        type: string
+      is_featured:
+        type: boolean
+      meta_description:
+        maxLength: 500
+        type: string
+      meta_title:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      parent_id:
+        type: string
+      position:
+        type: integer
+      slug:
+        maxLength: 255
+        minLength: 1
+        type: string
+      status:
+        enum:
+        - active
+        - inactive
+        - draft
+        type: string
+      thumbnail:
+        maxLength: 2048
+        type: string
+    required:
+    - name
+    type: object
+  emc_lb_src_pkg_entities.CreateCouponRequest:
+    properties:
+      code:
+        type: string
+      end_date:
+        type: string
+      is_active:
+        type: boolean
+      max_discount_amount:
+        minimum: 0
+        type: number
+      min_order_amount:
+        minimum: 0
+        type: number
+      start_date:
+        type: string
+      type:
+        enum:
+        - percentage
+        - fixed_amount
+        type: string
+      usage_limit:
+        minimum: 0
+        type: integer
+      value:
+        type: number
+    required:
+    - code
+    - end_date
+    - start_date
+    - type
+    - value
+    type: object
+  emc_lb_src_pkg_entities.CreateOrderRequest:
+    properties:
+      contact_phone:
+        type: string
+      coupon_code:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.OrderItem'
+        minItems: 1
+        type: array
+      payment_method:
+        type: string
+      shipping_address:
+        type: string
+    required:
+    - contact_phone
+    - items
+    - payment_method
+    - shipping_address
+    type: object
+  emc_lb_src_pkg_entities.CreateProductRequest:
+    properties:
+      allow_backorder:
+        type: boolean
+      brand_id:
+        type: string
+      category_id:
+        type: string
+      description:
+        maxLength: 2000
+        type: string
+      images:
+        items:
+          type: string
+        type: array
+      is_featured:
+        type: boolean
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      original_price:
+        minimum: 0
+        type: number
+      price:
+        minimum: 0
+        type: number
+      shop_id:
+        type: string
+      short_desc:
+        maxLength: 500
+        type: string
+      sku:
+        maxLength: 100
+        type: string
+      slug:
+        maxLength: 255
+        minLength: 1
+        type: string
+      status:
+        enum:
+        - active
+        - draft
+        - inactive
+        type: string
+      stock:
+        minimum: 0
+        type: integer
+      tags:
+        items:
+          type: string
+        type: array
+      thumbnail:
+        maxLength: 2048
+        type: string
+    required:
+    - name
+    - price
+    type: object
+  emc_lb_src_pkg_entities.CreateShopRequest:
+    properties:
+      description:
+        maxLength: 2000
+        type: string
+      logo:
+        maxLength: 2048
+        type: string
+      name:
+        maxLength: 255
+        minLength: 3
+        type: string
+    required:
+    - name
+    type: object
+  emc_lb_src_pkg_entities.DeleteUserRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  emc_lb_src_pkg_entities.LoginUserRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  emc_lb_src_pkg_entities.LogoutUserRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  emc_lb_src_pkg_entities.OrderItem:
+    properties:
+      price:
+        description: Captured at the time of order
+        type: number
+      product_id:
+        type: string
+      quantity:
+        type: integer
+    required:
+    - product_id
+    - quantity
+    type: object
+  emc_lb_src_pkg_entities.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  emc_lb_src_pkg_entities.RegisterUserRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      phone:
+        type: string
+      user_name:
+        type: string
+    required:
+    - email
+    - password
+    - user_name
+    type: object
+  emc_lb_src_pkg_entities.SePayIPNOrder:
+    properties:
+      id:
+        type: string
+      ip_address:
+        type: string
+      order_amount:
+        type: string
+      order_currency:
+        type: string
+      order_description:
+        type: string
+      order_id:
+        type: string
+      order_invoice_number:
+        type: string
+      order_status:
+        description: CAPTURED
+        type: string
+      user_agent:
+        type: string
+    type: object
+  emc_lb_src_pkg_entities.SePayIPNRequest:
+    properties:
+      notification_type:
+        description: ORDER_PAID
+        type: string
+      order:
+        $ref: '#/definitions/emc_lb_src_pkg_entities.SePayIPNOrder'
+      timestamp:
+        type: integer
+      transaction:
+        $ref: '#/definitions/emc_lb_src_pkg_entities.SePayIPNTx'
+    type: object
+  emc_lb_src_pkg_entities.SePayIPNTx:
+    properties:
+      authentication_status:
+        type: string
+      card_brand:
+        type: string
+      card_expiry:
+        type: string
+      card_holder_name:
+        type: string
+      card_number:
+        type: string
+      id:
+        type: string
+      payment_method:
+        type: string
+      transaction_amount:
+        type: string
+      transaction_currency:
+        type: string
+      transaction_date:
+        type: string
+      transaction_id:
+        type: string
+      transaction_status:
+        description: APPROVED
+        type: string
+      transaction_type:
+        type: string
+    type: object
+  emc_lb_src_pkg_entities.UpdateBrandRequest:
+    properties:
+      banner:
+        maxLength: 2048
+        type: string
+      company_name:
+        maxLength: 255
+        type: string
+      country:
+        maxLength: 120
+        type: string
+      description:
+        maxLength: 2000
+        type: string
+      email:
+        maxLength: 255
+        type: string
+      is_featured:
+        type: boolean
+      logo:
+        maxLength: 2048
+        type: string
+      meta_description:
+        maxLength: 500
+        type: string
+      meta_keywords:
+        items:
+          type: string
+        type: array
+      meta_title:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      phone:
+        type: string
+      position:
+        type: integer
+      slug:
+        maxLength: 255
+        minLength: 1
+        type: string
+      status:
+        enum:
+        - active
+        - inactive
+        - draft
+        type: string
+      website:
+        maxLength: 2048
+        type: string
+    type: object
+  emc_lb_src_pkg_entities.UpdateCartItemRequest:
+    properties:
+      quantity:
+        minimum: 1
+        type: integer
+    required:
+    - quantity
+    type: object
+  emc_lb_src_pkg_entities.UpdateCategoryRequest:
+    properties:
+      banner:
+        maxLength: 2048
+        type: string
+      description:
+        maxLength: 2000
+        type: string
+      is_featured:
+        type: boolean
+      meta_description:
+        maxLength: 500
+        type: string
+      meta_title:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      parent_id:
+        type: string
+      position:
+        type: integer
+      slug:
+        maxLength: 255
+        minLength: 1
+        type: string
+      status:
+        enum:
+        - active
+        - inactive
+        - draft
+        type: string
+      thumbnail:
+        maxLength: 2048
+        type: string
+    type: object
+  emc_lb_src_pkg_entities.UpdateCouponRequest:
+    properties:
+      end_date:
+        type: string
+      is_active:
+        type: boolean
+      max_discount_amount:
+        minimum: 0
+        type: number
+      min_order_amount:
+        minimum: 0
+        type: number
+      start_date:
+        type: string
+      type:
+        enum:
+        - percentage
+        - fixed_amount
+        type: string
+      usage_limit:
+        minimum: 0
+        type: integer
+      value:
+        type: number
+    type: object
+  emc_lb_src_pkg_entities.UpdateProductRequest:
+    properties:
+      allow_backorder:
+        type: boolean
+      brand_id:
+        type: string
+      category_id:
+        type: string
+      description:
+        maxLength: 2000
+        type: string
+      images:
+        items:
+          type: string
+        type: array
+      is_featured:
+        type: boolean
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      original_price:
+        minimum: 0
+        type: number
+      price:
+        minimum: 0
+        type: number
+      shop_id:
+        type: string
+      short_desc:
+        maxLength: 500
+        type: string
+      sku:
+        maxLength: 100
+        type: string
+      slug:
+        maxLength: 255
+        minLength: 1
+        type: string
+      status:
+        enum:
+        - active
+        - draft
+        - inactive
+        type: string
+      stock:
+        minimum: 0
+        type: integer
+      tags:
+        items:
+          type: string
+        type: array
+      thumbnail:
+        maxLength: 2048
+        type: string
+    type: object
+  emc_lb_src_pkg_entities.VerifyEmailOTPRequest:
+    properties:
+      email:
+        type: string
+      otp:
+        type: string
+    required:
+    - email
+    - otp
+    type: object
+  emc_lb_src_pkg_res.APIResponse:
+    properties:
+      code:
+        $ref: '#/definitions/emc_lb_src_pkg_res.ErrorCode'
+      data: {}
+      errors:
+        items:
+          $ref: '#/definitions/emc_lb_src_pkg_res.FieldError'
+        type: array
+      message:
+        type: string
+      pagination: {}
+      status:
+        type: integer
+      success:
+        type: boolean
+    type: object
+  emc_lb_src_pkg_res.ErrorCode:
+    enum:
+    - COMMON_BAD_REQUEST
+    - COMMON_NOT_FOUND
+    - COMMON_CONFLICT
+    - COMMON_INTERNAL_SERVER_ERROR
+    - COMMON_UNAUTHORIZED
+    - COMMON_FORBIDDEN
+    - COMMON_TOO_MANY_REQUESTS
+    - COMMON_INVALID_IDENTITY_TYPE
+    type: string
+    x-enum-varnames:
+    - ErrCodeBadRequest
+    - ErrCodeNotFound
+    - ErrCodeConflict
+    - ErrCodeInternal
+    - ErrCodeUnauthorized
+    - ErrCodeForbidden
+    - ErrCodeTooManyRequests
+    - ErrCodeInvalidIdentityType
+  emc_lb_src_pkg_res.FieldError:
+    properties:
+      field:
+        type: string
+      message:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: API documentation for the EMC Load Balancer Service.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: EMC Load Balancer API
+  version: "1.0"
+paths:
+  /api/v1/brands:
+    get:
+      description: Get all brands
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: List brands
+      tags:
+      - Brands
+    post:
+      consumes:
+      - application/json
+      description: Create a new brand
+      parameters:
+      - description: Brand details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.CreateBrandRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create brand
+      tags:
+      - Brands
+  /api/v1/brands/{id}:
+    delete:
+      description: Soft-delete a brand
+      parameters:
+      - description: Brand ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete brand
+      tags:
+      - Brands
+    get:
+      description: Get a single brand by its ID
+      parameters:
+      - description: Brand ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: Get brand by ID
+      tags:
+      - Brands
+    patch:
+      consumes:
+      - application/json
+      description: Update an existing brand
+      parameters:
+      - description: Brand ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.UpdateBrandRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update brand
+      tags:
+      - Brands
+  /api/v1/cart:
+    delete:
+      description: Remove all items from the shopping cart
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Clear cart
+      tags:
+      - Cart
+    get:
+      description: Get the shopping cart for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get cart
+      tags:
+      - Cart
+  /api/v1/cart/coupon:
+    post:
+      consumes:
+      - application/json
+      description: Apply a discount coupon code to the shopping cart
+      parameters:
+      - description: Coupon code
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.ApplyCouponRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Apply coupon to cart
+      tags:
+      - Cart
+  /api/v1/cart/items:
+    post:
+      consumes:
+      - application/json
+      description: Add a product to the shopping cart
+      parameters:
+      - description: Item to add
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.AddCartItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Add item to cart
+      tags:
+      - Cart
+  /api/v1/cart/items/{productId}:
+    delete:
+      description: Remove a product from the shopping cart
+      parameters:
+      - description: Product ID
+        in: path
+        name: productId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove item from cart
+      tags:
+      - Cart
+    put:
+      consumes:
+      - application/json
+      description: Update quantity of a product in the cart
+      parameters:
+      - description: Product ID
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: New quantity
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.UpdateCartItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update cart item
+      tags:
+      - Cart
+  /api/v1/categories:
+    get:
+      description: Get all product categories
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: List categories
+      tags:
+      - Categories
+    post:
+      consumes:
+      - application/json
+      description: Create a new product category (requires category:create permission)
+      parameters:
+      - description: Category details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.CreateCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create category
+      tags:
+      - Categories
+  /api/v1/categories/{id}:
+    delete:
+      description: Soft-delete a category (requires category:delete permission)
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete category
+      tags:
+      - Categories
+    get:
+      description: Get a single category by its ID
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: Get category by ID
+      tags:
+      - Categories
+    patch:
+      consumes:
+      - application/json
+      description: Update an existing category (requires category:update permission)
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.UpdateCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update category
+      tags:
+      - Categories
+  /api/v1/coupons:
+    get:
+      description: Get all coupons (requires coupon:read permission)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: List coupons
+      tags:
+      - Coupons
+    post:
+      consumes:
+      - application/json
+      description: Create a new discount coupon (requires coupon:create permission)
+      parameters:
+      - description: Coupon details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.CreateCouponRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create coupon
+      tags:
+      - Coupons
+  /api/v1/coupons/{code}:
+    get:
+      description: Get a single coupon by its code (requires coupon:read permission)
+      parameters:
+      - description: Coupon code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get coupon by code
+      tags:
+      - Coupons
+  /api/v1/coupons/{id}:
+    patch:
+      consumes:
+      - application/json
+      description: Update an existing coupon (requires coupon:update permission)
+      parameters:
+      - description: Coupon ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.UpdateCouponRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update coupon
+      tags:
+      - Coupons
+  /api/v1/orders:
+    get:
+      description: Get all orders in the system (requires manage_orders permission)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: List all orders (admin)
+      tags:
+      - Orders
+    post:
+      consumes:
+      - application/json
+      description: Create a new order from cart items. Orders are split by shop automatically.
+      parameters:
+      - description: Order details with items and optional coupon
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.CreateOrderRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create order
+      tags:
+      - Orders
+  /api/v1/orders/{id}:
+    get:
+      description: Get a single order by its ID (owner or admin only)
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get order by ID
+      tags:
+      - Orders
+  /api/v1/orders/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Update an order's status (requires manage_orders permission)
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New status
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update order status
+      tags:
+      - Orders
+  /api/v1/orders/my:
+    get:
+      description: Get all orders for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: List my orders
+      tags:
+      - Orders
+  /api/v1/payment/checkout:
+    post:
+      consumes:
+      - application/json
+      description: Creates a checkout session with SePay Payment Gateway and returns
+        the checkout URL
+      parameters:
+      - description: Checkout details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.CheckoutInitRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Initialize SePay checkout
+      tags:
+      - Payments
+  /api/v1/payment/ipn:
+    post:
+      consumes:
+      - application/json
+      description: Receives Instant Payment Notification from SePay when payment status
+        changes
+      parameters:
+      - description: IPN payload from SePay
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.SePayIPNRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: SePay IPN Webhook
+      tags:
+      - Payments
+  /api/v1/payment/test-checkout:
+    get:
+      description: Renders an auto-submitting HTML form that redirects to SePay for
+        testing
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML redirect form
+          schema:
+            type: string
+        "500":
+          description: Error message
+          schema:
+            type: string
+      summary: Test checkout link
+      tags:
+      - Payments
+  /api/v1/products:
+    get:
+      description: Get all products
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: List products
+      tags:
+      - Products
+    post:
+      consumes:
+      - application/json
+      description: Create a new product (requires product:create permission)
+      parameters:
+      - description: Product details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.CreateProductRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create product
+      tags:
+      - Products
+  /api/v1/products/{id}:
+    delete:
+      description: Soft-delete a product (requires product:delete permission)
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete product
+      tags:
+      - Products
+    get:
+      description: Get a single product by its ID
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: Get product by ID
+      tags:
+      - Products
+    patch:
+      consumes:
+      - application/json
+      description: Update an existing product (requires product:update permission)
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.UpdateProductRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update product
+      tags:
+      - Products
+  /api/v1/shops:
+    post:
+      consumes:
+      - application/json
+      description: Create a new shop for the current user
+      parameters:
+      - description: Shop details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.CreateShopRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new shop
+      tags:
+      - Shops
+  /api/v1/shops/my-shop:
+    get:
+      description: Get the shop details for the current user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get my shop
+      tags:
+      - Shops
+  /api/v1/user/avatar:
+    put:
+      consumes:
+      - multipart/form-data
+      description: Upload or update user avatar image
+      parameters:
+      - description: Avatar image
+        in: formData
+        name: avatar
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload avatar
+      tags:
+      - Users
+  /api/v1/user/delete:
+    post:
+      consumes:
+      - application/json
+      description: Delete the user account
+      parameters:
+      - description: Delete confirmation
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.DeleteUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete account
+      tags:
+      - Users
+  /api/v1/user/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate and receive access/refresh tokens
+      parameters:
+      - description: Login credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.LoginUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: Login
+      tags:
+      - Users
+  /api/v1/user/logout:
+    post:
+      consumes:
+      - application/json
+      description: Invalidate the current session tokens
+      parameters:
+      - description: Logout request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.LogoutUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Logout
+      tags:
+      - Users
+  /api/v1/user/refresh-token:
+    post:
+      consumes:
+      - application/json
+      description: Get a new access token using a refresh token
+      parameters:
+      - description: Refresh token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: Refresh token
+      tags:
+      - Users
+  /api/v1/user/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user account
+      parameters:
+      - description: Registration details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.RegisterUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: Register user
+      tags:
+      - Users
+  /api/v1/user/verify-email-otp:
+    post:
+      consumes:
+      - application/json
+      description: Verify email address using OTP code
+      parameters:
+      - description: OTP verification
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/emc_lb_src_pkg_entities.VerifyEmailOTPRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/emc_lb_src_pkg_res.APIResponse'
+      summary: Verify email OTP
+      tags:
+      - Users
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

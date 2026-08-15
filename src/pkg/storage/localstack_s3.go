@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	appconfig "emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/utils"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -27,13 +28,22 @@ type LocalStackS3Storage struct {
 }
 
 func NewLocalStackS3Storage(ctx context.Context) (*LocalStackS3Storage, error) {
+	// Prefer typed config; fall back to env vars for tests/tools
 	region := utils.GetEnv("AWS_REGION", "us-east-1")
 	endpoint := utils.GetEnv("LOCALSTACK_ENDPOINT", "http://localhost:4566")
 	accessKeyID := utils.GetEnv("AWS_ACCESS_KEY_ID", "test")
 	secretAccessKey := utils.GetEnv("AWS_SECRET_ACCESS_KEY", "test")
 	bucket := utils.GetEnv("S3_AVATAR_BUCKET", "emc-lb-avatars")
 
-	cfg, err := awsconfig.LoadDefaultConfig(
+	if cfg, err := appconfig.Load(); err == nil {
+		region = cfg.AWS.Region
+		endpoint = cfg.AWS.Endpoint
+		accessKeyID = cfg.AWS.AccessKeyID
+		secretAccessKey = cfg.AWS.SecretAccessKey
+		bucket = cfg.AWS.AvatarBucket
+	}
+
+	awsCfg, err := awsconfig.LoadDefaultConfig(
 		ctx,
 		awsconfig.WithRegion(region),
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, "")),
@@ -42,7 +52,7 @@ func NewLocalStackS3Storage(ctx context.Context) (*LocalStackS3Storage, error) {
 		return nil, err
 	}
 
-	client := s3.NewFromConfig(cfg, func(options *s3.Options) {
+	client := s3.NewFromConfig(awsCfg, func(options *s3.Options) {
 		options.UsePathStyle = true
 		options.BaseEndpoint = aws.String(endpoint)
 	})

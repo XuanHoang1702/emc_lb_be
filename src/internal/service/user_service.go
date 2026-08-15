@@ -8,14 +8,15 @@ import (
 
 	"emc_lb/src/internal/repository"
 	"emc_lb/src/pkg/cache"
+	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/logs"
-	"emc_lb/src/pkg/mail"
 	"emc_lb/src/pkg/mapping"
 	"emc_lb/src/pkg/res"
 	"emc_lb/src/pkg/storage"
 	"emc_lb/src/pkg/utils"
+	"emc_lb/src/pkg/worker"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -33,19 +34,21 @@ type UserService interface {
 }
 
 type userService struct {
+	cfg               *config.AppConfig
 	userRepository    repository.UserRepository
 	refreshTokenStore cache.RefreshTokenStore
 	emailOTPStore     cache.EmailOTPStore
-	mailer            mail.Mailer
+	taskDistributor   worker.TaskDistributor
 	avatarStorage     storage.AvatarStorage
 }
 
-func NewUserService(userRepository repository.UserRepository, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, mailer mail.Mailer, avatarStorage storage.AvatarStorage) UserService {
+func NewUserService(cfg *config.AppConfig, userRepository repository.UserRepository, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) UserService {
 	return &userService{
+		cfg:               cfg,
 		userRepository:    userRepository,
 		refreshTokenStore: refreshTokenStore,
 		emailOTPStore:     emailOTPStore,
-		mailer:            mailer,
+		taskDistributor:   taskDistributor,
 		avatarStorage:     avatarStorage,
 	}
 }
@@ -67,11 +70,11 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 			StatusCode: http.StatusConflict,
 		}
 	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
-	}
+	// if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	// 	return entities.RegisterUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
+	// }
 
-	passwordHash, err := utils.HashPassword(normalizedRequest.Password)
+	passwordHash, err := utils.HashPassword(normalizedRequest.Password, s.cfg.App.SystemSecret)
 	if err != nil {
 		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not create account now", erres.CommonInternal)
 	}
@@ -92,8 +95,15 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not create account now", erres.CommonInternal)
 	}
 
-	if err := s.mailer.SendEmailVerificationOTP(ctx, normalizedRequest.Email, normalizedRequest.UserName, otp, int(otpTTL.Minutes())); err != nil {
-		logs.LogError("mail", "send_verification_otp_failed", err, map[string]any{
+	payload := &worker.PayloadSendVerifyEmail{
+		Email:    normalizedRequest.Email,
+		UserName: normalizedRequest.UserName,
+		OTP:      otp,
+		TTL:      int(otpTTL.Minutes()),
+	}
+
+	if err := s.taskDistributor.DistributeTaskSendVerifyEmail(ctx, payload); err != nil {
+		logs.LogError("worker", "enqueue_verify_email_task_failed", err, map[string]any{
 			"email":     normalizedRequest.Email,
 			"user_name": normalizedRequest.UserName,
 		})
@@ -120,7 +130,7 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
 	}
 
-	if err := utils.CheckPassword(normalizedRequest.Password, user.PasswordHash); err != nil {
+	if err = utils.CheckPassword(normalizedRequest.Password, user.PasswordHash, s.cfg.App.SystemSecret); err != nil {
 		return entities.LoginUserResponse{}, &res.AppError{
 			Message:    "Invalid email or password",
 			Code:       erres.UserUnauthorized,
@@ -136,7 +146,7 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 		}
 	}
 
-	tokenPair, err := utils.GenerateTokenPair(user.ID.String())
+	tokenPair, err := utils.GenerateTokenPair(user.ID.String(), user.Role, s.cfg.JWT)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not login now", erres.CommonInternal)
 	}
@@ -171,7 +181,17 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 		}
 	}
 
-	tokenPair, err := utils.GenerateTokenPair(userID)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return entities.LoginUserResponse{}, res.WrapError(err, "Invalid user ID in refresh token", erres.CommonInternal)
+	}
+
+	user, err := s.userRepository.GetByID(ctx, uid)
+	if err != nil {
+		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
+	}
+
+	tokenPair, err := utils.GenerateTokenPair(userID, user.Role, s.cfg.JWT)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
 	}
@@ -297,7 +317,7 @@ func (s *userService) UpsertAvatar(ctx context.Context, req entities.UpsertAvata
 		}
 	}
 
-	if _, err := s.userRepository.GetIDByID(ctx, userID); err != nil {
+	if _, err = s.userRepository.GetIDByID(ctx, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return entities.UpsertAvatarResponse{}, &res.AppError{
 				Message:    "User not found",
@@ -312,6 +332,23 @@ func (s *userService) UpsertAvatar(ctx context.Context, req entities.UpsertAvata
 	if len(normalizedRequest.FileData) == 0 {
 		return entities.UpsertAvatarResponse{}, &res.AppError{
 			Message:    "Avatar file is required",
+			Code:       erres.UserInvalidFormat,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
+	if len(normalizedRequest.FileData) > 5*1024*1024 { // 5MB limit
+		return entities.UpsertAvatarResponse{}, &res.AppError{
+			Message:    "Avatar file is too large (max 5MB)",
+			Code:       erres.UserInvalidFormat,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
+	mimeType := http.DetectContentType(normalizedRequest.FileData)
+	if mimeType != "image/jpeg" && mimeType != "image/png" && mimeType != "image/webp" {
+		return entities.UpsertAvatarResponse{}, &res.AppError{
+			Message:    "Invalid file type. Only JPEG, PNG, and WebP are allowed",
 			Code:       erres.UserInvalidFormat,
 			StatusCode: http.StatusBadRequest,
 		}

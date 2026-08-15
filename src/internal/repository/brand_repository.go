@@ -17,6 +17,7 @@ type BrandRepository interface {
 	GetByID(context.Context, string) (entities.Brand, error)
 	Update(context.Context, string, map[string]any) (entities.Brand, error)
 	Delete(context.Context, string, map[string]any) error
+	ExistsByID(context.Context, string) (bool, error)
 	ExistsByName(context.Context, string, *string) (bool, error)
 	ExistsBySlug(context.Context, string, *string) (bool, error)
 	ExistsByPosition(context.Context, int64, *string) (bool, error)
@@ -30,87 +31,6 @@ type brandRepository struct {
 
 func NewBrandRepository(collection *mongo.Collection) BrandRepository {
 	return &brandRepository{collection: collection}
-}
-
-type brandDoc struct {
-	ID bson.ObjectID `bson:"_id,omitempty"`
-	Name        string `bson:"name"`
-	Slug        string `bson:"slug"`
-	Description string `bson:"description,omitempty"`
-	Logo   string `bson:"logo,omitempty"`
-	Banner string `bson:"banner,omitempty"`
-	Website     string `bson:"website,omitempty"`
-	Email       string `bson:"email,omitempty"`
-	Phone       string `bson:"phone,omitempty"`
-	Country     string `bson:"country,omitempty"`
-	CompanyName string `bson:"company_name,omitempty"`
-	MetaTitle       string   `bson:"meta_title,omitempty"`
-	MetaDescription string   `bson:"meta_description,omitempty"`
-	MetaKeywords    []string `bson:"meta_keywords,omitempty"`
-	Position   int64 `bson:"position"`
-	IsFeatured bool  `bson:"is_featured"`
-	Status    string `bson:"status"`
-	IsDeleted bool   `bson:"is_deleted"`
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
-	DeletedAt time.Time `bson:"deleted_at"`
-}
-
-func toBrandDoc(b entities.Brand) brandDoc {
-	doc := brandDoc{
-		Name: b.Name,
-		Slug: b.Slug,
-		Description: b.Description,
-		Logo: b.Logo,
-		Banner: b.Banner,
-		Website: b.Website,
-		Email: b.Email,
-		Phone: b.Phone,
-		Country: b.Country,
-		CompanyName: b.CompanyName,
-		MetaTitle: b.MetaTitle,
-		MetaDescription: b.MetaDescription,
-		MetaKeywords: b.MetaKeywords,
-		Position: b.Position,
-		IsFeatured: b.IsFeatured,
-		Status: b.Status,
-		IsDeleted: b.IsDeleted,
-		CreatedAt: b.CreatedAt,
-		UpdatedAt: b.UpdatedAt,
-		DeletedAt: b.DeletedAt,
-	}
-	if b.ID != "" {
-		if id, err := bson.ObjectIDFromHex(b.ID); err == nil {
-			doc.ID = id
-		}
-	}
-	return doc
-}
-
-func toBrandEntity(doc brandDoc) entities.Brand {
-	return entities.Brand{
-		ID: doc.ID.Hex(),
-		Name: doc.Name,
-		Slug: doc.Slug,
-		Description: doc.Description,
-		Logo: doc.Logo,
-		Banner: doc.Banner,
-		Website: doc.Website,
-		Email: doc.Email,
-		Phone: doc.Phone,
-		Country: doc.Country,
-		CompanyName: doc.CompanyName,
-		MetaTitle: doc.MetaTitle,
-		MetaDescription: doc.MetaDescription,
-		MetaKeywords: doc.MetaKeywords,
-		Position: doc.Position,
-		IsFeatured: doc.IsFeatured,
-		Status: doc.Status,
-		IsDeleted: doc.IsDeleted,
-		CreatedAt: doc.CreatedAt,
-		UpdatedAt: doc.UpdatedAt,
-		DeletedAt: doc.DeletedAt,
-	}
 }
 
 func (r *brandRepository) Create(ctx context.Context, brand entities.Brand) (entities.Brand, error) {
@@ -137,7 +57,7 @@ func (r *brandRepository) List(ctx context.Context) ([]entities.Brand, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	brands := make([]entities.Brand, 0)
 	for cursor.Next(ctx) {
@@ -211,22 +131,6 @@ func (r *brandRepository) Delete(ctx context.Context, id string, update map[stri
 	return nil
 }
 
-func (r *brandRepository) ExistsByName(ctx context.Context, name string, excludeID *string) (bool, error) {
-	return r.existsByField(ctx, "name", name, excludeID)
-}
-
-func (r *brandRepository) ExistsBySlug(ctx context.Context, slug string, excludeID *string) (bool, error) {
-	return r.existsByField(ctx, "slug", slug, excludeID)
-}
-
-func (r *brandRepository) ExistsByPosition(ctx context.Context, position int64, excludeID *string) (bool, error) {
-	return r.existsByField(ctx, "position", position, excludeID)
-}
-
-func (r *brandRepository) ExistsByEmail(ctx context.Context, email string, excludeID *string) (bool, error) {
-	return r.existsByField(ctx, "email", email, excludeID)
-}
-
 func (r *brandRepository) EnsureIndexes(ctx context.Context) error {
 	models := []mongo.IndexModel{
 		{
@@ -257,7 +161,7 @@ func (r *brandRepository) EnsureIndexes(ctx context.Context) error {
 				SetUnique(true).
 				SetPartialFilterExpression(bson.M{
 					"is_deleted": false,
-					"email":      bson.M{"$type": "string", "$ne": ""},
+					"email":      bson.M{"$type": "string", "$gt": ""},
 				}),
 		},
 		{
@@ -272,6 +176,130 @@ func (r *brandRepository) EnsureIndexes(ctx context.Context) error {
 
 	_, err := r.collection.Indexes().CreateMany(ctx, models)
 	return err
+}
+
+// ============================================================================
+// Database Models & Mappers
+// ============================================================================
+
+type brandDoc struct {
+	ID              bson.ObjectID `bson:"_id,omitempty"`
+	Name            string        `bson:"name"`
+	Slug            string        `bson:"slug"`
+	Description     string        `bson:"description,omitempty"`
+	Logo            string        `bson:"logo,omitempty"`
+	Banner          string        `bson:"banner,omitempty"`
+	Website         string        `bson:"website,omitempty"`
+	Email           string        `bson:"email,omitempty"`
+	Phone           string        `bson:"phone,omitempty"`
+	Country         string        `bson:"country,omitempty"`
+	CompanyName     string        `bson:"company_name,omitempty"`
+	MetaTitle       string        `bson:"meta_title,omitempty"`
+	MetaDescription string        `bson:"meta_description,omitempty"`
+	MetaKeywords    []string      `bson:"meta_keywords,omitempty"`
+	Position        int64         `bson:"position"`
+	IsFeatured      bool          `bson:"is_featured"`
+	Status          string        `bson:"status"`
+	IsDeleted       bool          `bson:"is_deleted"`
+	CreatedAt       time.Time     `bson:"created_at"`
+	UpdatedAt       time.Time     `bson:"updated_at"`
+	DeletedAt       time.Time     `bson:"deleted_at"`
+}
+
+func toBrandDoc(b entities.Brand) brandDoc {
+	doc := brandDoc{
+		Name:            b.Name,
+		Slug:            b.Slug,
+		Description:     b.Description,
+		Logo:            b.Logo,
+		Banner:          b.Banner,
+		Website:         b.Website,
+		Email:           b.Email,
+		Phone:           b.Phone,
+		Country:         b.Country,
+		CompanyName:     b.CompanyName,
+		MetaTitle:       b.MetaTitle,
+		MetaDescription: b.MetaDescription,
+		MetaKeywords:    b.MetaKeywords,
+		Position:        b.Position,
+		IsFeatured:      b.IsFeatured,
+		Status:          b.Status,
+		IsDeleted:       b.IsDeleted,
+		CreatedAt:       b.CreatedAt,
+		UpdatedAt:       b.UpdatedAt,
+		DeletedAt:       b.DeletedAt,
+	}
+	if b.ID != "" {
+		if id, err := bson.ObjectIDFromHex(b.ID); err == nil {
+			doc.ID = id
+		}
+	}
+	return doc
+}
+
+func toBrandEntity(doc brandDoc) entities.Brand {
+	return entities.Brand{
+		ID:              doc.ID.Hex(),
+		Name:            doc.Name,
+		Slug:            doc.Slug,
+		Description:     doc.Description,
+		Logo:            doc.Logo,
+		Banner:          doc.Banner,
+		Website:         doc.Website,
+		Email:           doc.Email,
+		Phone:           doc.Phone,
+		Country:         doc.Country,
+		CompanyName:     doc.CompanyName,
+		MetaTitle:       doc.MetaTitle,
+		MetaDescription: doc.MetaDescription,
+		MetaKeywords:    doc.MetaKeywords,
+		Position:        doc.Position,
+		IsFeatured:      doc.IsFeatured,
+		Status:          doc.Status,
+		IsDeleted:       doc.IsDeleted,
+		CreatedAt:       doc.CreatedAt,
+		UpdatedAt:       doc.UpdatedAt,
+		DeletedAt:       doc.DeletedAt,
+	}
+}
+
+// ============================================================================
+// Existence Checks
+// ============================================================================
+
+func (r *brandRepository) ExistsByID(ctx context.Context, id string) (bool, error) {
+	objID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return false, err
+	}
+	err = r.collection.FindOne(ctx, bson.M{
+		"_id":        objID,
+		"is_deleted": false,
+	}).Err()
+	if err == mongo.ErrNoDocuments {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (r *brandRepository) ExistsByName(ctx context.Context, name string, excludeID *string) (bool, error) {
+	return r.existsByField(ctx, "name", name, excludeID)
+}
+
+func (r *brandRepository) ExistsBySlug(ctx context.Context, slug string, excludeID *string) (bool, error) {
+	return r.existsByField(ctx, "slug", slug, excludeID)
+}
+
+func (r *brandRepository) ExistsByPosition(ctx context.Context, position int64, excludeID *string) (bool, error) {
+	return r.existsByField(ctx, "position", position, excludeID)
+}
+
+func (r *brandRepository) ExistsByEmail(ctx context.Context, email string, excludeID *string) (bool, error) {
+	return r.existsByField(ctx, "email", email, excludeID)
 }
 
 func (r *brandRepository) existsByField(ctx context.Context, field string, value any, excludeID *string) (bool, error) {
@@ -294,28 +322,4 @@ func (r *brandRepository) existsByField(ctx context.Context, field string, value
 	}
 
 	return true, nil
-}
-
-func ToBrandResponse(brand entities.Brand) entities.BrandResponse {
-	return entities.BrandResponse{
-		ID:              brand.ID,
-		Name:            brand.Name,
-		Slug:            brand.Slug,
-		Description:     brand.Description,
-		Logo:            brand.Logo,
-		Banner:          brand.Banner,
-		Website:         brand.Website,
-		Email:           brand.Email,
-		Phone:           brand.Phone,
-		Country:         brand.Country,
-		CompanyName:     brand.CompanyName,
-		MetaTitle:       brand.MetaTitle,
-		MetaDescription: brand.MetaDescription,
-		MetaKeywords:    brand.MetaKeywords,
-		Position:        brand.Position,
-		IsFeatured:      brand.IsFeatured,
-		Status:          brand.Status,
-		CreatedAt:       brand.CreatedAt,
-		UpdatedAt:       brand.UpdatedAt,
-	}
 }

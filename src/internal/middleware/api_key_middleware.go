@@ -1,18 +1,13 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net/http"
-	"os"
 
 	"github.com/gin-gonic/gin"
 )
 
-func ApiKeyMiddleware() gin.HandlerFunc {
-	expectedKey := os.Getenv("API_KEY")
-	if expectedKey == "" {
-		expectedKey = "secret-key"
-	}
-
+func APIKeyMiddleware(expectedKey string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		apiKey := ctx.GetHeader("X-API-Key")
 		if apiKey == "" {
@@ -20,7 +15,7 @@ func ApiKeyMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		if apiKey != expectedKey {
+		if subtle.ConstantTimeCompare([]byte(apiKey), []byte(expectedKey)) != 1 {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid API Key"})
 			return
 		}
@@ -29,18 +24,14 @@ func ApiKeyMiddleware() gin.HandlerFunc {
 	}
 }
 
-func ApiKeyTransacionMiddleware() gin.HandlerFunc {
-	expectedKey := os.Getenv("API_KEY_TRANSACTION")
-	if expectedKey == "" {
-		expectedKey = "secret-key-transacion"
-	}
+func APIKeyTransacionMiddleware(expectedKey string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		apiKey := ctx.GetHeader("X-API-KEY-Transaction")
 		if apiKey == "" {
 			ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing X-API-KEY-Transaction"})
 			return
 		}
-		if apiKey != expectedKey {
+		if subtle.ConstantTimeCompare([]byte(apiKey), []byte(expectedKey)) != 1 {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid API KEY Transaction"})
 			return
 		}

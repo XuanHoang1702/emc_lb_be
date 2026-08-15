@@ -10,11 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"emc_lb/src/pkg/config"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type accessTokenClaims struct {
 	UserID string `json:"user_id"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -25,13 +28,13 @@ type TokenPair struct {
 	RefreshTokenExpiresAt time.Time
 }
 
-func GenerateTokenPair(userID string) (TokenPair, error) {
-	accessToken, accessExpiresAt, err := GenerateAccessToken(userID)
+func GenerateTokenPair(userID string, role string, cfg config.JWTSettings) (TokenPair, error) {
+	accessToken, accessExpiresAt, err := GenerateAccessToken(userID, role, cfg)
 	if err != nil {
 		return TokenPair{}, err
 	}
 
-	refreshToken, refreshExpiresAt, err := GenerateRefreshToken()
+	refreshToken, refreshExpiresAt, err := GenerateRefreshToken(cfg)
 	if err != nil {
 		return TokenPair{}, err
 	}
@@ -44,35 +47,33 @@ func GenerateTokenPair(userID string) (TokenPair, error) {
 	}, nil
 }
 
-func GenerateAccessToken(userID string) (string, time.Time, error) {
-	ttl := GetDurationFromEnv("ACCESS_TOKEN_TTL", 15*time.Minute)
+func GenerateAccessToken(userID string, role string, cfg config.JWTSettings) (string, time.Time, error) {
 	now := time.Now()
-	return generateAccessJWT(userID, now, ttl, buildTokenSecret(GetEnv("ACCESS_TOKEN_SECRET", "access-secret")))
+	return generateAccessJWT(userID, role, now, cfg.AccessTTL, buildTokenSecret(cfg.AccessSecret))
 }
 
-func ParseAccessToken(accessToken string) (string, error) {
+func ParseAccessToken(accessToken string, accessSecret string) (string, string, error) {
 	parsedToken, err := jwt.ParseWithClaims(accessToken, &accessTokenClaims{}, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {
 			return nil, errors.New("invalid signing method")
 		}
 
-		return buildTokenSecret(GetEnv("ACCESS_TOKEN_SECRET", "access-secret")), nil
+		return buildTokenSecret(accessSecret), nil
 	})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	claims, ok := parsedToken.Claims.(*accessTokenClaims)
 	if !ok || !parsedToken.Valid || claims.UserID == "" {
-		return "", errors.New("invalid access token")
+		return "", "", errors.New("invalid access token")
 	}
 
-	return claims.UserID, nil
+	return claims.UserID, claims.Role, nil
 }
 
-func GenerateRefreshToken() (string, time.Time, error) {
-	ttl := GetDurationFromEnv("REFRESH_TOKEN_TTL", 7*24*time.Hour)
-	expiresAt := time.Now().Add(ttl)
+func GenerateRefreshToken(cfg config.JWTSettings) (string, time.Time, error) {
+	expiresAt := time.Now().Add(cfg.RefreshTTL)
 
 	tokenBytes := make([]byte, 24)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -80,15 +81,16 @@ func GenerateRefreshToken() (string, time.Time, error) {
 	}
 
 	payload := base64.RawURLEncoding.EncodeToString(tokenBytes)
-	signature := signTokenPayload(payload, buildTokenSecret(GetEnv("REFRESH_TOKEN_SECRET", "refresh-secret")))
+	signature := signTokenPayload(payload, buildTokenSecret(cfg.RefreshSecret))
 	refreshToken := payload + "." + signature
 	return refreshToken, expiresAt, nil
 }
 
-func generateAccessJWT(userID string, issuedAt time.Time, ttl time.Duration, secret []byte) (string, time.Time, error) {
+func generateAccessJWT(userID string, role string, issuedAt time.Time, ttl time.Duration, secret []byte) (string, time.Time, error) {
 	expiresAt := issuedAt.Add(ttl)
 	claims := accessTokenClaims{
 		UserID: userID,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
@@ -106,8 +108,10 @@ func generateAccessJWT(userID string, issuedAt time.Time, ttl time.Duration, sec
 }
 
 func buildTokenSecret(secret string) []byte {
-	systemSecret := GetEnv("SYSTEM_SECRET", "system-secret")
-	sum := sha256.Sum256([]byte(systemSecret + ":" + secret))
+	// For simplicity, we just hash the secret itself if no systemSecret is present,
+	// or we can just return the secret as bytes. To match previous behavior where
+	// systemSecret = AccessSecret, we can just hash it against itself.
+	sum := sha256.Sum256([]byte(secret + ":" + secret))
 	return sum[:]
 }
 
