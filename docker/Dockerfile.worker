@@ -12,7 +12,7 @@ COPY . .
 # Build the worker binary
 RUN go build -o /app/emc_worker src/cmd/worker/main.go
 
-FROM alpine:3.19
+FROM alpine:3.21
 
 WORKDIR /app
 
