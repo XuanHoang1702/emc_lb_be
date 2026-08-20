@@ -34,7 +34,7 @@ func main() {
 	count := 10
 	if v := os.Getenv("LOADTEST_USERS"); v != "" {
 		if _, err := fmt.Sscanf(v, "%d", &count); err != nil || count < 1 {
-			log.Fatalf("invalid LOADTEST_USERS=%q", v)
+			log.Fatal("invalid LOADTEST_USERS (expected positive integer)")
 		}
 	}
 
