@@ -327,7 +327,6 @@ jobs:
     name: Benchmark Performance
     runs-on: ubuntu-latest
     needs: integration-test
-    continue-on-error: true
 
     services:
       postgres:

@@ -9,7 +9,7 @@ x-logging: &default-logging
 services:
   postgres:
     image: postgres:15
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     command: postgres -c timezone=Asia/Ho_Chi_Minh
     environment:
       TZ: Asia/Ho_Chi_Minh
@@ -35,8 +35,17 @@ services:
 
   mongo:
     image: mongo:7
-    env_file: ../.env.development
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    env_file: ${ECC_ENV_FILE:-../.env.development}
+    # Auth + replica set requires a keyfile. Generate one at boot with correct
+    # ownership before handing off to the official entrypoint.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        openssl rand -base64 756 > /data/db/rs-keyfile
+        chmod 400 /data/db/rs-keyfile
+        chown mongodb:mongodb /data/db/rs-keyfile
+        exec /usr/local/bin/docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/db/rs-keyfile
     ports:
       - "127.0.0.1:27018:27017"
     volumes:
@@ -62,7 +71,7 @@ services:
   redis:
     image: redis:7
     command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\""]
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     ports:
       - "127.0.0.1:6380:6379"
     volumes:
@@ -84,7 +93,7 @@ services:
 
   localstack:
     image: localstack/localstack:3.4.0
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
       - AWS_DEFAULT_REGION=$${AWS_REGION}
     ports:
@@ -107,11 +116,12 @@ services:
           memory: 512M
 
   emc_api_node_1:
+    image: ${ECC_API_IMAGE:-emc_lb_api}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile
     restart: always
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
       APP_PORT: 8080
       GIN_MODE: release
@@ -136,11 +146,12 @@ services:
           memory: 256M
 
   emc_api_node_2:
+    image: ${ECC_API_IMAGE:-emc_lb_api}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile
     restart: always
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
       APP_PORT: 8080
       GIN_MODE: release
@@ -165,11 +176,12 @@ services:
           memory: 256M
 
   emc_api_node_3:
+    image: ${ECC_API_IMAGE:-emc_lb_api}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile
     restart: always
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
       APP_PORT: 8080
       GIN_MODE: release
@@ -194,11 +206,12 @@ services:
           memory: 256M
 
   emc_worker:
+    image: ${ECC_WORKER_IMAGE:-emc_lb_worker}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile.worker
     restart: always
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
