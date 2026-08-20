@@ -30,13 +30,12 @@ type AppConfig struct {
 }
 
 type AppSettings struct {
-	Port          string
-	Mode          string // "debug" | "release"
-	SystemSecret  string
-	APIKey        string
-	CORSOrigins   string
-	LogLevel      string // "debug" | "info" | "warn" | "error"
-	MigrationsDir string
+	Port         string
+	Mode         string // "debug" | "release"
+	SystemSecret string
+	APIKey       string
+	CORSOrigins  string
+	LogLevel     string // "debug" | "info" | "warn" | "error"
 }
 
 type PostgresSettings struct {
@@ -126,13 +125,12 @@ func load() (*AppConfig, error) {
 
 	cfg := &AppConfig{
 		App: AppSettings{
-			Port:          getEnv("APP_PORT", "8080"),
-			Mode:          getEnv("GIN_MODE", "debug"),
-			SystemSecret:  getEnv("SYSTEM_SECRET", ""),
-			APIKey:        getEnv("API_KEY", ""),
-			CORSOrigins:   getEnv("CORS_ALLOWED_ORIGINS", "*"),
-			LogLevel:      getEnv("LOG_LEVEL", "info"),
-			MigrationsDir: getEnv("MIGRATIONS_DIR", "src/internal/db/migrations"),
+			Port:         getEnv("APP_PORT", "8080"),
+			Mode:         getEnv("GIN_MODE", "debug"),
+			SystemSecret: getEnv("SYSTEM_SECRET", ""),
+			APIKey:       getEnv("API_KEY", ""),
+			CORSOrigins:  getEnv("CORS_ALLOWED_ORIGINS", "*"),
+			LogLevel:     getEnv("LOG_LEVEL", "info"),
 		},
 		Postgres: PostgresSettings{
 			Host:     getEnv("POSTGRES_HOST", "localhost"),
@@ -157,8 +155,8 @@ func load() (*AppConfig, error) {
 			Password: getEnv("REDIS_PASSWORD", ""),
 		},
 		JWT: JWTSettings{
-			AccessSecret:  getEnv("ACCESS_TOKEN_SECRET", "access-secret"),
-			RefreshSecret: getEnv("REFRESH_TOKEN_SECRET", "refresh-secret"),
+			AccessSecret:  getEnv("ACCESS_TOKEN_SECRET", ""),
+			RefreshSecret: getEnv("REFRESH_TOKEN_SECRET", ""),
 			AccessTTL:     getEnvDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 			RefreshTTL:    getEnvDuration("REFRESH_TOKEN_TTL", 7*24*time.Hour),
 		},
@@ -180,8 +178,8 @@ func load() (*AppConfig, error) {
 		},
 		Payment: PaymentSettings{
 			SepayEnv:        getEnv("SEPAY_ENV", "sandbox"),
-			SepayMerchantID: getEnv("CLIENT_KEY", ""),
-			SepaySecretKey:  getEnv("SECRET_KEY", ""),
+			SepayMerchantID: getEnv("SEPAY_MERCHANT_ID", ""),
+			SepaySecretKey:  getEnv("SEPAY_SECRET_KEY", ""),
 			SepaySuccessURL: getEnv("SEPAY_SUCCESS_URL", ""),
 			SepayErrorURL:   getEnv("SEPAY_ERROR_URL", ""),
 			SepayCancelURL:  getEnv("SEPAY_CANCEL_URL", ""),
@@ -196,7 +194,7 @@ func load() (*AppConfig, error) {
 }
 
 // validate checks critical required fields. Only fields that will cause crashes
-// at runtime if missing are validated here — others are optional.
+// or security holes at runtime if missing are validated here — others are optional.
 func validate(cfg *AppConfig) error {
 	if cfg.App.SystemSecret == "" {
 		return fmt.Errorf("SYSTEM_SECRET is required")
@@ -204,6 +202,24 @@ func validate(cfg *AppConfig) error {
 
 	if cfg.MongoDB.URI == "" {
 		return fmt.Errorf("MONGO_URI is required")
+	}
+
+	// JWT secrets must never fall back to known public defaults, or any
+	// attacker can forge access/refresh tokens.
+	if cfg.JWT.AccessSecret == "" {
+		return fmt.Errorf("ACCESS_TOKEN_SECRET is required")
+	}
+	if cfg.JWT.RefreshSecret == "" {
+		return fmt.Errorf("REFRESH_TOKEN_SECRET is required")
+	}
+	for name, secret := range map[string]string{
+		"ACCESS_TOKEN_SECRET":  cfg.JWT.AccessSecret,
+		"REFRESH_TOKEN_SECRET": cfg.JWT.RefreshSecret,
+	} {
+		switch secret {
+		case "access-secret", "refresh-secret":
+			return fmt.Errorf("%s must not use the default placeholder value", name)
+		}
 	}
 
 	return nil

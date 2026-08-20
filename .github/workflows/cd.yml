@@ -1,0 +1,112 @@
+name: CD Deploy
+
+on:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to deploy (default: git sha)"
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: cd-${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.25.13"
+
+jobs:
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-api:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository }}-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.worker
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-worker:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository }}-worker:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH (rolling + smoke + rollback)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_SERVER: ghcr.io/${{ github.repository }}-api
+          IMAGE_WORKER: ghcr.io/${{ github.repository }}-worker
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.tag }}
+          PREVIOUS_TAG: latest
+          COMPOSE_DIR: ${{ vars.DEPLOY_COMPOSE_DIR || '/opt/emc_lb' }}
+          ECC_ENV_FILE_ABS: ${{ vars.DEPLOY_ENV_FILE || '.env.production' }}
+          ECC_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE_REL || '../.env.production' }}
+        run: |
+          # Upload script lên server rồi thực thi (env vars truyền qua command line)
+          echo "$DEPLOY_SSH_KEY" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /tmp/deploy_key"
+          ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $COMPOSE_DIR/docker/nginx"
+          scp $SSH_OPTS docker/docker-compose.yml "$DEPLOY_USER@$DEPLOY_HOST:$COMPOSE_DIR/docker/docker-compose.yml"
+          scp $SSH_OPTS docker/nginx/nginx.conf "$DEPLOY_USER@$DEPLOY_HOST:$COMPOSE_DIR/docker/nginx/nginx.conf"
+          scp $SSH_OPTS deploy/deploy.sh "$DEPLOY_USER@$DEPLOY_HOST:$COMPOSE_DIR/deploy.sh"
+          REMOTE_ENV="IMAGE_SERVER='$IMAGE_SERVER' IMAGE_WORKER='$IMAGE_WORKER' IMAGE_TAG='$IMAGE_TAG' PREVIOUS_TAG='$PREVIOUS_TAG' COMPOSE_DIR='$COMPOSE_DIR' ECC_ENV_FILE_ABS='$ECC_ENV_FILE_ABS' ECC_ENV_FILE='$ECC_ENV_FILE' GHCR_USERNAME='$GHCR_USERNAME' GHCR_TOKEN='$GHCR_TOKEN'"
+          ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "cd $COMPOSE_DIR && $REMOTE_ENV bash deploy.sh"

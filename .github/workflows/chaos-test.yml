@@ -1,4 +1,4 @@
-name: E2E
+name: Chaos Test
 
 on:
   push:
@@ -11,15 +11,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  group: chaos-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   GO_VERSION: "1.25.13"
 
 jobs:
-  e2e:
-    name: Business Flow E2E
+  chaos-test:
+    name: Chaos / Resilience Test
     runs-on: ubuntu-latest
 
     steps:
@@ -37,8 +37,8 @@ jobs:
           cat > .env.ci <<'EOF'
           APP_PORT=8080
           APP_ENV=test
-          API_KEY=ci_e2e_api_key
-          SYSTEM_SECRET=ci_e2e_secret
+          API_KEY=ci_chaos_api_key
+          SYSTEM_SECRET=ci_chaos_secret
 
           POSTGRES_HOST=postgres
           POSTGRES_PORT=5432
@@ -62,8 +62,8 @@ jobs:
           AWS_SECRET_ACCESS_KEY=test
           S3_AVATAR_BUCKET=emc-lb-avatars
 
-          ACCESS_TOKEN_SECRET=e2e_access_secret
-          REFRESH_TOKEN_SECRET=e2e_refresh_secret
+          ACCESS_TOKEN_SECRET=chaos_access_secret
+          REFRESH_TOKEN_SECRET=chaos_refresh_secret
           ACCESS_TOKEN_TTL=15m
           REFRESH_TOKEN_TTL=168h
 
@@ -79,17 +79,15 @@ jobs:
           SEPAY_SECRET_KEY=test
           EOF
 
-      - name: Run business-flow E2E
+      - name: Run chaos tests
         env:
           ECC_ENV_FILE_ABS: .env.ci
           ECC_ENV_FILE: ../.env.ci
           COMPOSE_FILE: docker/docker-compose.yml
           BASE_URL: http://localhost
-          MONGO_USER: root
-          MONGO_PASS: mongo_pass
-          REDIS_PASS: redis_pass
+          API_KEY: ci_chaos_api_key
         run: |
-          bash e2e/e2e-test.sh
+          bash chaos/chaos-test.sh
 
       - name: Collect logs on failure
         if: failure()

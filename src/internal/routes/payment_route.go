@@ -2,7 +2,6 @@ package route
 
 import (
 	"emc_lb/src/internal/handler"
-	"emc_lb/src/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,8 +17,9 @@ func NewPaymentRoute(paymentHandler *handler.PaymentHandler) *PaymentRoute {
 func (r *PaymentRoute) RegisterPublic(router gin.IRouter) {
 	paymentGroup := router.Group("/payment")
 	{
-		// IPN endpoint for SePay Payment Gateway
-		paymentGroup.POST("/ipn", middleware.APIKeyTransacionMiddleware("a"), r.paymentHandler.HandleSepayIPN)
+		// IPN endpoint for SePay Payment Gateway.
+		// Authenticated via the X-Secret-Key header, verified in ProcessIPN.
+		paymentGroup.POST("/ipn", r.paymentHandler.HandleSepayIPN)
 
 		// Test endpoint: Generates a clickable link/redirect for testing the payment gateway in browser
 		paymentGroup.GET("/test-checkout", r.paymentHandler.HandleTestCheckoutLink)

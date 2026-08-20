@@ -1,0 +1,199 @@
+name: Load Test
+
+on:
+  push:
+    branches: ["master", "develop"]
+  pull_request:
+    branches: ["master", "develop"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: loadtest-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25.13"
+
+jobs:
+  load-test:
+    name: k6 Load Test (through nginx LB)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # ------------------------------------------------------------
+      # Khởi động toàn bộ stack: postgres, mongo (replSet), redis,
+      # localstack, 3 API nodes, nginx load balancer
+      # ------------------------------------------------------------
+      - name: Prepare CI env file
+        run: |
+          cat > .env.ci <<'EOF'
+          APP_PORT=8080
+          APP_ENV=test
+          API_KEY=ci_loadtest_api_key
+          SYSTEM_SECRET=ci_loadtest_secret
+
+          POSTGRES_HOST=postgres
+          POSTGRES_PORT=5432
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=emc_lb
+          DATABASE_URL=postgres://postgres:postgres@postgres:5432/emc_lb?sslmode=disable
+
+          MONGO_INITDB_ROOT_USERNAME=root
+          MONGO_INITDB_ROOT_PASSWORD=mongo_pass
+          MONGO_URI=mongodb://root:mongo_pass@mongo:27017/?authSource=admin
+          MONGO_DB=emc_lb
+
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          REDIS_PASSWORD=redis_pass
+
+          LOCALSTACK_ENDPOINT=http://localstack:4566
+          AWS_REGION=us-east-1
+          AWS_ACCESS_KEY_ID=test
+          AWS_SECRET_ACCESS_KEY=test
+          S3_AVATAR_BUCKET=emc-lb-avatars
+
+          ACCESS_TOKEN_SECRET=loadtest_access_secret
+          REFRESH_TOKEN_SECRET=loadtest_refresh_secret
+          ACCESS_TOKEN_TTL=15m
+          REFRESH_TOKEN_TTL=168h
+
+          SMTP_HOST=localhost
+          SMTP_PORT=1025
+          SMTP_USERNAME=test
+          SMTP_PASSWORD=test
+          SMTP_FROM_EMAIL=no-reply@example.com
+          SMTP_FROM_NAME=EMC LB
+
+          SEPAY_ENV=sandbox
+          SEPAY_MERCHANT_ID=test
+          SEPAY_SECRET_KEY=test
+          EOF
+
+      - name: Start stack with docker compose
+        env:
+          ECC_ENV_FILE: ../.env.ci
+        run: |
+          docker compose \
+            --env-file .env.ci \
+            -f docker/docker-compose.yml \
+            up -d --build
+
+      - name: Wait for nginx / health
+        run: |
+          for i in {1..90}; do
+            if curl -sf http://localhost/health 2>/dev/null | grep -q '"status":"up"'; then
+              echo "nginx + API cluster ready."
+              break
+            fi
+            echo "Waiting for stack... ($i)"
+            sleep 5
+          done
+          curl -sf http://localhost/health || { echo "stack never became healthy"; docker compose -f docker/docker-compose.yml logs; exit 1; }
+
+      # Server tự apply migration khi boot (app.go: migrate.Run). Seed vai
+      # trò/quyền + user đã xác thực (để k6 login được) + sản phẩm thật.
+      - name: Seed load-test data
+        run: |
+          export POSTGRES_DSN="postgres://postgres:postgres@localhost:5432/emc_lb?sslmode=disable"
+          export SYSTEM_SECRET=ci_loadtest_secret
+          if [ -f src/cmd/seed/main.go ]; then
+            go run ./src/cmd/seed 2>/dev/null || echo "seed skipped (roles may already exist)"
+          fi
+          if [ -f src/cmd/loadtest-seed/main.go ]; then
+            LOADTEST_USERS=200 go run ./src/cmd/loadtest-seed
+          fi
+
+      - name: Seed load-test products (MongoDB)
+        env:
+          ECC_ENV_FILE: ../.env.ci
+        run: |
+          docker compose --env-file .env.ci -f docker/docker-compose.yml exec -T mongo mongosh --quiet \
+            --username root --password mongo_pass --authenticationDatabase admin \
+            --eval '
+            const dbc = db.getSiblingDB("emc_lb");
+            for (let i = 1; i <= 20; i++) {
+              const slug = `loadtest-product-${i}`;
+              const existing = dbc.products.findOne({ slug });
+              if (!existing) {
+                dbc.products.insertOne({
+                  shop_id: `shop_lt_${(i % 3) + 1}`,
+                  name: `LoadTest Product ${i}`,
+                  slug,
+                  description: "load test product",
+                  short_desc: "lt",
+                  price: 100000 + i * 5000,
+                  original_price: 150000 + i * 5000,
+                  cost_price: 50000 + i * 2000,
+                  sku: `LT-${String(i).padStart(4, "0")}`,
+                  barcode: `lt-${String(i).padStart(4, "0")}`,
+                  stock: 1000000,
+                  sold_count: 0,
+                  allow_backorder: false,
+                  thumbnail: "",
+                  images: [],
+                  attributes: {},
+                  tags: [],
+                  is_active: true,
+                  is_deleted: false,
+                  created_at: new Date(),
+                  updated_at: new Date()
+                });
+              }
+            }
+            const ids = dbc.products.find({ slug: /^loadtest-product-/ }, { _id: 1 }).limit(5).map(d => d._id.toString()).toArray();
+            print("PRODUCT_IDS=" + ids.join(","));
+            ' | grep '^PRODUCT_IDS=' | cut -d= -f2 > /tmp/lt-product-ids
+          echo "Product IDs: $(cat /tmp/lt-product-ids)"
+
+      - name: Install k6
+        run: |
+          sudo apt-get update -q
+          if sudo apt-get install -yq k6 2>/dev/null; then
+            echo "k6 installed via apt"
+          else
+            curl -sL https://github.com/grafana/k6/releases/download/v0.57.0/k6-v0.57.0-linux-amd64.tar.gz \
+              -o /tmp/k6.tar.gz
+            tar -xzf /tmp/k6.tar.gz -C /tmp
+            sudo cp /tmp/k6-v0.57.0-linux-amd64/k6 /usr/local/bin/
+            echo "k6 installed via release binary"
+          fi
+          k6 version
+
+      # ------------------------------------------------------------
+      # Chạy load test qua nginx load balancer
+      # ------------------------------------------------------------
+      - name: Run load test (full suite)
+        env:
+          BASE_URL: http://localhost
+          API_KEY: ci_loadtest_api_key
+          PRODUCT_IDS: "$(cat /tmp/lt-product-ids)"
+          LOADTEST_USER_COUNT: "200"
+        run: |
+          k6 run --summary-export=/tmp/k6-summary.json loadtest/checkout-flow.js
+
+      - name: Upload k6 report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-load-report
+          path: /tmp/k6-summary.json
+          retention-days: 7
+
+      - name: Tear down stack
+        if: always()
+        run: |
+          docker compose --env-file .env.ci -f docker/docker-compose.yml down -v --remove-orphans || true

@@ -37,7 +37,7 @@ SET
     is_deleted = true,
     deleted_at = NOW(),
     updated_at = NOW()
-WHERE email = $1 AND is_deleted = false`)
+WHERE id = $1 AND is_deleted = false`)
 	userAvatarSQL = regexp.QuoteMeta(`UPDATE users
 SET
     avatar_url = $2,
@@ -128,16 +128,17 @@ func TestUserRepo_VerifyEmail(t *testing.T) {
 	}
 }
 
-func TestUserRepo_SoftDeleteByEmail(t *testing.T) {
+func TestUserRepo_SoftDeleteByID(t *testing.T) {
 	pool, _ := pgxmock.NewPool()
 	repo := repository.NewUserRepository(sqlcdn.New(pool))
 
+	id := uuid.New()
 	pool.ExpectExec(userDeleteSQL).
-		WithArgs("john@example.com").
+		WithArgs(id).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
-	if err := repo.SoftDeleteByEmail(context.Background(), "john@example.com"); err != nil {
-		t.Fatalf("SoftDeleteByEmail returned error: %v", err)
+	if err := repo.SoftDeleteByID(context.Background(), id); err != nil {
+		t.Fatalf("SoftDeleteByID returned error: %v", err)
 	}
 }
 
