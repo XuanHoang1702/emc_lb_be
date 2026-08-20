@@ -71,7 +71,7 @@ func New() (*App, error) {
 	}()
 
 	// ── 4. Auto-migration ────────────────────────────────────────────────────
-	if err = migrate.Run(cfg.Postgres.DatabaseURL(), cfg.App.MigrationsDir); err != nil {
+	if err = migrate.Run(cfg.Postgres.DatabaseURL()); err != nil {
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 

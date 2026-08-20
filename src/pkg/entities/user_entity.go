@@ -80,10 +80,6 @@ type VerifyEmailOTPRequest struct {
 	OTP   string `json:"otp" binding:"required,len=6"`
 }
 
-type DeleteUserRequest struct {
-	Email string `json:"email" binding:"required,email"`
-}
-
 type UpsertAvatarRequest struct {
 	UserID      string
 	FileName    string

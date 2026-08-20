@@ -15,7 +15,7 @@ type UserRepository interface {
 	GetIDByID(context.Context, uuid.UUID) (uuid.UUID, error)
 	Create(context.Context, entities.User) (entities.User, error)
 	VerifyEmail(context.Context, string) error
-	SoftDeleteByEmail(context.Context, string) error
+	SoftDeleteByID(context.Context, uuid.UUID) error
 	UpdateAvatarByID(context.Context, uuid.UUID, string) error
 }
 
@@ -85,8 +85,8 @@ func (r *userRepository) VerifyEmail(ctx context.Context, email string) error {
 	return r.db.VerifyUserEmail(ctx, email)
 }
 
-func (r *userRepository) SoftDeleteByEmail(ctx context.Context, email string) error {
-	return r.db.SoftDeleteUserByEmail(ctx, email)
+func (r *userRepository) SoftDeleteByID(ctx context.Context, id uuid.UUID) error {
+	return r.db.SoftDeleteUserByID(ctx, id)
 }
 
 func (r *userRepository) UpdateAvatarByID(ctx context.Context, userID uuid.UUID, avatarURL string) error {

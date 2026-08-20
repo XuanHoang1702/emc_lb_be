@@ -151,17 +151,17 @@ func (q *Queries) GetUserIDByID(ctx context.Context, id uuid.UUID) (uuid.UUID, e
 	return id, err
 }
 
-const softDeleteUserByEmail = `-- name: SoftDeleteUserByEmail :exec
+const softDeleteUserByID = `-- name: SoftDeleteUserByID :exec
 UPDATE users
 SET
     is_deleted = true,
     deleted_at = NOW(),
     updated_at = NOW()
-WHERE email = $1 AND is_deleted = false
+WHERE id = $1 AND is_deleted = false
 `
 
-func (q *Queries) SoftDeleteUserByEmail(ctx context.Context, email string) error {
-	_, err := q.db.Exec(ctx, softDeleteUserByEmail, email)
+func (q *Queries) SoftDeleteUserByID(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, softDeleteUserByID, id)
 	return err
 }
 

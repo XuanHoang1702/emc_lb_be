@@ -13,6 +13,7 @@ import (
 	"emc_lb/src/pkg/errors"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type UserHandler struct {
@@ -162,24 +163,28 @@ func (h *UserHandler) HandleVerifyEmailOTP(ctx *gin.Context) {
 
 // HandleDelete godoc
 // @Summary      Delete account
-// @Description  Delete the user account
+// @Description  Delete the currently authenticated user's account
 // @Tags         Users
 // @Accept       json
 // @Produce      json
-// @Param        body body entities.DeleteUserRequest true "Delete confirmation"
 // @Success      200  {object}  res.APIResponse
 // @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Failure      404  {object}  res.APIResponse
 // @Security     BearerAuth
 // @Router       /api/v1/user/delete [post]
 func (h *UserHandler) HandleDelete(ctx *gin.Context) {
-	var deleteRequest entities.DeleteUserRequest
-	err := validation.BindJSON(ctx, &deleteRequest, errors.UserInvalidFormat)
+	userID, err := uuid.Parse(ctx.GetString(middleware.ContextUserIDKey))
 	if err != nil {
-		res.Error(ctx, err)
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid access token",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
 		return
 	}
 
-	if err := h.userService.Delete(ctx.Request.Context(), deleteRequest); err != nil {
+	if err := h.userService.Delete(ctx.Request.Context(), userID); err != nil {
 		res.Error(ctx, err)
 		return
 	}

@@ -102,18 +102,18 @@ func (mr *MockUserRepositoryMockRecorder) GetIDByID(arg0, arg1 any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIDByID", reflect.TypeOf((*MockUserRepository)(nil).GetIDByID), arg0, arg1)
 }
 
-// SoftDeleteByEmail mocks base method.
-func (m *MockUserRepository) SoftDeleteByEmail(arg0 context.Context, arg1 string) error {
+// SoftDeleteByID mocks base method.
+func (m *MockUserRepository) SoftDeleteByID(arg0 context.Context, arg1 uuid.UUID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SoftDeleteByEmail", arg0, arg1)
+	ret := m.ctrl.Call(m, "SoftDeleteByID", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SoftDeleteByEmail indicates an expected call of SoftDeleteByEmail.
-func (mr *MockUserRepositoryMockRecorder) SoftDeleteByEmail(arg0, arg1 any) *gomock.Call {
+// SoftDeleteByID indicates an expected call of SoftDeleteByID.
+func (mr *MockUserRepositoryMockRecorder) SoftDeleteByID(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SoftDeleteByEmail", reflect.TypeOf((*MockUserRepository)(nil).SoftDeleteByEmail), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SoftDeleteByID", reflect.TypeOf((*MockUserRepository)(nil).SoftDeleteByID), arg0, arg1)
 }
 
 // UpdateAvatarByID mocks base method.

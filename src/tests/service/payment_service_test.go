@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/entities"
@@ -43,6 +44,8 @@ func (s *stubPaymentOrderSvc) UpdateOrderStatus(_ context.Context, _ string, _ s
 }
 
 func TestProcessIPN_OrderPaid(t *testing.T) {
+	t.Setenv("SEPAY_SECRET_KEY", "test-secret")
+
 	var markedInvoice string
 	orderSvc := &stubPaymentOrderSvc{
 		markAsPaidFn: func(inv string, amount float64) error {
@@ -54,6 +57,7 @@ func TestProcessIPN_OrderPaid(t *testing.T) {
 	svc := service.NewPaymentService(orderSvc)
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
+		Timestamp:        time.Now().Unix(),
 		NotificationType: "ORDER_PAID",
 		Order: entities.SePayIPNOrder{
 			OrderStatus:        "CAPTURED",
@@ -63,7 +67,7 @@ func TestProcessIPN_OrderPaid(t *testing.T) {
 		Transaction: entities.SePayIPNTx{
 			PaymentMethod: "BANK_TRANSFER",
 		},
-	})
+	}, "test-secret")
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -73,41 +77,102 @@ func TestProcessIPN_OrderPaid(t *testing.T) {
 	}
 }
 
-func TestProcessIPN_IgnoreNonOrderPaid(t *testing.T) {
+func TestProcessIPN_InvalidSecret(t *testing.T) {
+	t.Setenv("SEPAY_SECRET_KEY", "correct-secret")
+
 	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
+		Timestamp:        time.Now().Unix(),
+		NotificationType: "ORDER_PAID",
+		Order: entities.SePayIPNOrder{
+			OrderStatus:        "CAPTURED",
+			OrderInvoiceNumber: "INV-12345",
+		},
+	}, "wrong-secret")
+
+	if err == nil {
+		t.Fatal("expected error for invalid secret key")
+	}
+	appErr, ok := err.(*res.AppError)
+	if !ok {
+		t.Fatal("expected AppError")
+	}
+	if appErr.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", appErr.StatusCode)
+	}
+}
+
+func TestProcessIPN_ExpiredTimestamp(t *testing.T) {
+	t.Setenv("SEPAY_SECRET_KEY", "test-secret")
+
+	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
+
+	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
+		Timestamp:        time.Now().Add(-10 * time.Minute).Unix(),
+		NotificationType: "ORDER_PAID",
+		Order: entities.SePayIPNOrder{
+			OrderStatus:        "CAPTURED",
+			OrderInvoiceNumber: "INV-12345",
+		},
+	}, "test-secret")
+
+	if err == nil {
+		t.Fatal("expected error for expired timestamp")
+	}
+	appErr, ok := err.(*res.AppError)
+	if !ok {
+		t.Fatal("expected AppError")
+	}
+	if appErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", appErr.StatusCode)
+	}
+}
+
+func TestProcessIPN_IgnoreNonOrderPaid(t *testing.T) {
+	t.Setenv("SEPAY_SECRET_KEY", "test-secret")
+
+	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
+
+	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
+		Timestamp:        time.Now().Unix(),
 		NotificationType: "ORDER_CREATED",
-	})
+	}, "test-secret")
 	if err != nil {
 		t.Fatalf("expected no error for non ORDER_PAID notification, got %v", err)
 	}
 }
 
 func TestProcessIPN_IgnoreNonCaptured(t *testing.T) {
+	t.Setenv("SEPAY_SECRET_KEY", "test-secret")
+
 	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
+		Timestamp:        time.Now().Unix(),
 		NotificationType: "ORDER_PAID",
 		Order: entities.SePayIPNOrder{
 			OrderStatus: "PENDING",
 		},
-	})
+	}, "test-secret")
 	if err != nil {
 		t.Fatalf("expected no error for non CAPTURED status, got %v", err)
 	}
 }
 
 func TestProcessIPN_MissingInvoice(t *testing.T) {
+	t.Setenv("SEPAY_SECRET_KEY", "test-secret")
+
 	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
+		Timestamp:        time.Now().Unix(),
 		NotificationType: "ORDER_PAID",
 		Order: entities.SePayIPNOrder{
 			OrderStatus:        "CAPTURED",
 			OrderInvoiceNumber: "",
 		},
-	})
+	}, "test-secret")
 	if err == nil {
 		t.Fatal("expected error for missing invoice number")
 	}

@@ -12,9 +12,6 @@ services:
     env_file: ../.env.development
     command: postgres -c timezone=Asia/Ho_Chi_Minh
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
       TZ: Asia/Ho_Chi_Minh
       PGTZ: Asia/Ho_Chi_Minh
     ports:
@@ -25,7 +22,7 @@ services:
       - emc-network
     logging: *default-logging
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,9 +36,7 @@ services:
   mongo:
     image: mongo:7
     env_file: ../.env.development
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "127.0.0.1:27018:27017"
     volumes:
@@ -49,11 +44,14 @@ services:
     networks:
       - emc-network
     logging: *default-logging
+    # Single-node replica set: required for the multi-document transactions
+    # used in order creation. The healthcheck initializes the replica set on
+    # first boot and then reports healthy once a primary has been elected.
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      test: [ "CMD-SHELL", "mongosh --quiet --username $${MONGO_INITDB_ROOT_USERNAME} --password $${MONGO_INITDB_ROOT_PASSWORD} --authenticationDatabase admin --eval 'try { rs.status().ok } catch (e) { rs.initiate({_id: \"rs0\", members: [{_id: 0, host: \"mongo:27017\"}]}).ok }' | grep -q 1" ]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
       start_period: 30s
     deploy:
       resources:
@@ -63,7 +61,7 @@ services:
 
   redis:
     image: redis:7
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\""]
     env_file: ../.env.development
     ports:
       - "127.0.0.1:6380:6379"
@@ -73,7 +71,7 @@ services:
       - emc-network
     logging: *default-logging
     healthcheck:
-      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
+      test: [ "CMD", "redis-cli", "-a", "$${REDIS_PASSWORD}", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -88,7 +86,7 @@ services:
     image: localstack/localstack:3.4.0
     env_file: ../.env.development
     environment:
-      - AWS_DEFAULT_REGION=${AWS_REGION}
+      - AWS_DEFAULT_REGION=$${AWS_REGION}
     ports:
       - "127.0.0.1:4566:4566"
     volumes:
@@ -120,7 +118,6 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       LOCALSTACK_ENDPOINT: http://localstack:4566
     depends_on:
       postgres:
@@ -150,7 +147,6 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       LOCALSTACK_ENDPOINT: http://localstack:4566
     depends_on:
       postgres:
@@ -180,7 +176,6 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       LOCALSTACK_ENDPOINT: http://localstack:4566
     depends_on:
       postgres:
@@ -208,7 +203,6 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       LOCALSTACK_ENDPOINT: http://localstack:4566
     depends_on:
       postgres:

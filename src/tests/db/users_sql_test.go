@@ -118,20 +118,21 @@ WHERE id = $1 AND is_deleted = false`)).
 	}
 }
 
-func TestSoftDeleteUserByEmail(t *testing.T) {
+func TestSoftDeleteUserByID(t *testing.T) {
 	q, mock := newQueries(t)
 
+	id := uuid.New()
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE users
 SET
     is_deleted = true,
     deleted_at = NOW(),
     updated_at = NOW()
-WHERE email = $1 AND is_deleted = false`)).
-		WithArgs("john@example.com").
+WHERE id = $1 AND is_deleted = false`)).
+		WithArgs(id).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
-	if err := q.SoftDeleteUserByEmail(context.Background(), "john@example.com"); err != nil {
-		t.Fatalf("SoftDeleteUserByEmail returned error: %v", err)
+	if err := q.SoftDeleteUserByID(context.Background(), id); err != nil {
+		t.Fatalf("SoftDeleteUserByID returned error: %v", err)
 	}
 }
 
