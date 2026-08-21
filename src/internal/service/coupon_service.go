@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"emc_lb/src/internal/repository"
+	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/res"
@@ -23,10 +24,11 @@ type CouponService interface {
 
 type couponService struct {
 	couponRepository repository.CouponRepository
+	cacheStore       cache.CouponCacheStore
 }
 
-func NewCouponService(repo repository.CouponRepository) CouponService {
-	return &couponService{couponRepository: repo}
+func NewCouponService(repo repository.CouponRepository, cacheStore cache.CouponCacheStore) CouponService {
+	return &couponService{couponRepository: repo, cacheStore: cacheStore}
 }
 
 func (s *couponService) Create(ctx context.Context, req entities.CreateCouponRequest) (entities.CouponResponse, error) {
@@ -63,27 +65,55 @@ func (s *couponService) Create(ctx context.Context, req entities.CreateCouponReq
 		return entities.CouponResponse{}, res.WrapError(err, "Failed to create coupon", erres.CommonInternal)
 	}
 
+	if s.cacheStore != nil {
+		_ = s.cacheStore.InvalidateAll(ctx)
+	}
+
 	return s.toResponse(created), nil
 }
 
 func (s *couponService) GetByCode(ctx context.Context, code string) (entities.CouponResponse, error) {
-	coupon, err := s.couponRepository.GetByCode(ctx, strings.ToUpper(code))
+	normalized := strings.ToUpper(code)
+
+	if s.cacheStore != nil {
+		if cached, err := s.cacheStore.GetByCode(ctx, normalized); err == nil {
+			return s.toResponse(cached), nil
+		}
+	}
+
+	coupon, err := s.couponRepository.GetByCode(ctx, normalized)
 	if err != nil {
 		return entities.CouponResponse{}, res.WrapError(err, "Coupon not found", erres.CommonNotFound)
 	}
+
+	if s.cacheStore != nil {
+		_ = s.cacheStore.SetByCode(ctx, normalized, coupon)
+	}
+
 	return s.toResponse(coupon), nil
 }
 
 func (s *couponService) List(ctx context.Context) ([]entities.CouponResponse, error) {
+	if s.cacheStore != nil {
+		if cached, err := s.cacheStore.GetAll(ctx); err == nil {
+			return cached, nil
+		}
+	}
+
 	coupons, err := s.couponRepository.List(ctx)
 	if err != nil {
 		return nil, res.WrapError(err, "Failed to list coupons", erres.CommonInternal)
 	}
 
-	var responses []entities.CouponResponse
+	responses := make([]entities.CouponResponse, 0, len(coupons))
 	for _, c := range coupons {
 		responses = append(responses, s.toResponse(c))
 	}
+
+	if s.cacheStore != nil {
+		_ = s.cacheStore.SetAll(ctx, responses)
+	}
+
 	return responses, nil
 }
 
@@ -124,16 +154,35 @@ func (s *couponService) Update(ctx context.Context, id string, req entities.Upda
 		return entities.CouponResponse{}, res.WrapError(err, "Failed to update coupon", erres.CommonInternal)
 	}
 
+	if s.cacheStore != nil {
+		_ = s.cacheStore.InvalidateByCode(ctx, updated.Code)
+	}
+
 	return s.toResponse(updated), nil
 }
 
 func (s *couponService) ValidateCouponForAmount(ctx context.Context, code string, amount float64) (entities.Coupon, error) {
-	coupon, err := s.couponRepository.GetByCode(ctx, strings.ToUpper(code))
-	if err != nil {
-		return entities.Coupon{}, &res.AppError{
-			Message:    "Invalid coupon code",
-			Code:       erres.CommonBadRequest,
-			StatusCode: http.StatusBadRequest,
+	normalized := strings.ToUpper(code)
+
+	var (
+		coupon entities.Coupon
+		err    error
+	)
+
+	if s.cacheStore != nil {
+		coupon, err = s.cacheStore.GetByCode(ctx, normalized)
+	}
+	if s.cacheStore == nil || err != nil {
+		coupon, err = s.couponRepository.GetByCode(ctx, normalized)
+		if err != nil {
+			return entities.Coupon{}, &res.AppError{
+				Message:    "Invalid coupon code",
+				Code:       erres.CommonBadRequest,
+				StatusCode: http.StatusBadRequest,
+			}
+		}
+		if s.cacheStore != nil {
+			_ = s.cacheStore.SetByCode(ctx, normalized, coupon)
 		}
 	}
 
@@ -174,7 +223,15 @@ func (s *couponService) ValidateCouponForAmount(ctx context.Context, code string
 }
 
 func (s *couponService) IncrementUsage(ctx context.Context, code string, count int64) error {
-	return s.couponRepository.IncrementUsage(ctx, code, count)
+	if err := s.couponRepository.IncrementUsage(ctx, code, count); err != nil {
+		return err
+	}
+
+	if s.cacheStore != nil {
+		_ = s.cacheStore.InvalidateByCode(ctx, code)
+	}
+
+	return nil
 }
 
 func (s *couponService) toResponse(c entities.Coupon) entities.CouponResponse {

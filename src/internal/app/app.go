@@ -141,14 +141,14 @@ func New() (*App, error) {
 		productMod *module.ProductModule
 	)
 
-	couponMod = module.NewCouponModule(mongoDB)
+	couponMod = module.NewCouponModule(mongoDB, redisClient)
 	productMod = module.NewProductModule(mongoDB, redisClient)
 
 	categoryMod, err := module.NewCategoryModule(mongoDB, redisClient)
 	if err != nil {
 		return nil, fmt.Errorf("create category module: %w", err)
 	}
-	brandMod, err := module.NewBrandModule(mongoDB)
+	brandMod, err := module.NewBrandModule(mongoDB, redisClient)
 	if err != nil {
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
