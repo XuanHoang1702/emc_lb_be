@@ -41,11 +41,14 @@ type User struct {
 }
 
 type RegisterUserRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
-	UserName string `json:"user_name" binding:"required"`
-	Phone    string `json:"phone"`
+	Email    string `json:"email" binding:"required,email,max=254"`
+	Password string `json:"password" binding:"required,min=8,max=12"`
+	UserName string `json:"user_name" binding:"required,min=3,max=254,regex=^[a-zA-Z0-9_]*$"`
+	Phone    string `json:"phone" binding:"omitempty,min=10,max=15"`
 }
+
+// Giới hạn độ dài tối đa của cột có thể ảnh hưởng đến khả năng lập index, giới hạn index key và một số quyết định lưu trữ;
+// còn kích thước index thực tế phụ thuộc vào dữ liệu thực tế và database engine.
 
 type RegisterUserResponse struct {
 	ID        uuid.UUID `json:"id"`
