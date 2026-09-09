@@ -1,5 +1,3 @@
-version: '3.9'
-
 x-logging: &default-logging
   driver: "json-file"
   options:
@@ -8,6 +6,7 @@ x-logging: &default-logging
 
 services:
   postgres:
+    container_name: emc_lb_postgres
     image: postgres:15
     env_file: ${ECC_ENV_FILE:-../.env.development}
     command: postgres -c timezone=Asia/Ho_Chi_Minh
@@ -34,18 +33,23 @@ services:
           memory: 512M
 
   mongo:
+    container_name: emc_lb_mongo
     image: mongo:7
     env_file: ${ECC_ENV_FILE:-../.env.development}
     # Auth + replica set requires a keyfile. Generate one at boot with correct
     # ownership before handing off to the official entrypoint.
+    # We place it in /tmp instead of /data/db because if /data/db is not empty,
+    # the MongoDB image initialization (creating root user) will be skipped.
     entrypoint:
       - /bin/bash
       - -c
       - |
-        openssl rand -base64 756 > /data/db/rs-keyfile
-        chmod 400 /data/db/rs-keyfile
-        chown mongodb:mongodb /data/db/rs-keyfile
-        exec /usr/local/bin/docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/db/rs-keyfile
+        if [ ! -f /tmp/rs-keyfile ]; then
+          openssl rand -base64 756 > /tmp/rs-keyfile
+          chmod 400 /tmp/rs-keyfile
+          chown mongodb:mongodb /tmp/rs-keyfile
+        fi
+        exec /usr/local/bin/docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /tmp/rs-keyfile
     ports:
       - "127.0.0.1:27018:27017"
     volumes:
@@ -69,6 +73,7 @@ services:
           memory: 512M
 
   redis:
+    container_name: emc_lb_redis
     image: redis:7
     command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\""]
     env_file: ${ECC_ENV_FILE:-../.env.development}
@@ -92,6 +97,7 @@ services:
           memory: 256M
 
   localstack:
+    container_name: emc_lb_localstack
     image: localstack/localstack:3.4.0
     env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
@@ -116,6 +122,7 @@ services:
           memory: 512M
 
   emc_api_node_1:
+    container_name: emc_lb_api_node_1
     image: ${ECC_API_IMAGE:-emc_lb_api}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
@@ -146,6 +153,7 @@ services:
           memory: 256M
 
   emc_api_node_2:
+    container_name: emc_lb_api_node_2
     image: ${ECC_API_IMAGE:-emc_lb_api}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
@@ -176,6 +184,7 @@ services:
           memory: 256M
 
   emc_api_node_3:
+    container_name: emc_lb_api_node_3
     image: ${ECC_API_IMAGE:-emc_lb_api}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
@@ -206,6 +215,7 @@ services:
           memory: 256M
 
   emc_worker:
+    container_name: emc_lb_worker
     image: ${ECC_WORKER_IMAGE:-emc_lb_worker}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
@@ -234,6 +244,7 @@ services:
           memory: 256M
 
   nginx:
+    container_name: emc_lb_nginx
     image: nginx:alpine
     ports:
       - "80:80"
