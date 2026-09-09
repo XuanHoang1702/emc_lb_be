@@ -3,10 +3,11 @@ package repository
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"emc_lb/src/internal/db/sqlc"
 	"emc_lb/src/pkg/entities"
-
-	"github.com/google/uuid"
+	"emc_lb/src/pkg/mapping"
 )
 
 type UserRepository interface {
@@ -71,14 +72,7 @@ func (r *userRepository) Create(ctx context.Context, user entities.User) (entiti
 	if err != nil {
 		return entities.User{}, err
 	}
-
-	user.ID = row.ID
-	user.Email = row.Email
-	user.UserName = row.UserName
-	user.Phone = row.Phone
-	user.CreatedAt = row.CreatedAt
-
-	return user, nil
+	return mapping.ToUserEntityFromSqlc(row), nil
 }
 
 func (r *userRepository) VerifyEmail(ctx context.Context, email string) error {
