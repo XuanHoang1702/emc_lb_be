@@ -46,21 +46,18 @@ func main() {
 
 	processor := worker.NewRedisTaskProcessor(redisOpt, mailer)
 
-	errs := make(chan error, 1)
-	go func() {
-		logger.Info("worker server started")
-		errs <- processor.Start()
-	}()
+	err = processor.Start()
+	if err != nil {
+		logger.Error("failed to start worker server", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("worker server started")
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	select {
-	case err := <-errs:
-		logger.Error("worker server error", "error", err)
-	case sig := <-quit:
-		logger.Info("shutting down worker server", "signal", sig.String())
-	}
+	sig := <-quit
+	logger.Info("shutting down worker server", "signal", sig.String())
 
 	processor.Shutdown()
 	logger.Info("worker server stopped")
