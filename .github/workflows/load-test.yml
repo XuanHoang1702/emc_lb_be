@@ -1,4 +1,4 @@
-name: Load Test
+name: "📈 Load Test · k6 Performance Suite"
 
 on:
   push:
@@ -19,25 +19,27 @@ env:
 
 jobs:
   load-test:
-    name: k6 Load Test (through nginx LB)
+    name: "📈 k6 Load Test (nginx LB → 3 API nodes)"
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: "⚙️ Setup Go ${{ env.GO_VERSION }}"
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      # ------------------------------------------------------------
-      # Khởi động toàn bộ stack: postgres, mongo (replSet), redis,
-      # localstack, 3 API nodes, nginx load balancer
-      # ------------------------------------------------------------
-      - name: Prepare CI env file
+      # ── Step 1/7: Environment ────────────────────────────────
+      - name: "🔧 Step 1/7 · Prepare CI environment file"
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  LOAD TEST · k6 PERFORMANCE SUITE"
+          echo "  Step 1/7: Preparing environment"
+          echo "══════════════════════════════════════════"
+
           cat > .env.ci <<'EOF'
           APP_PORT=8080
           APP_ENV=test
@@ -83,44 +85,65 @@ jobs:
           SEPAY_SECRET_KEY=test
           EOF
 
-      - name: Start stack with docker compose
+          echo "✅ Environment file created."
+
+      # ── Step 2/7: Stack ──────────────────────────────────────
+      - name: "🚀 Step 2/7 · Start full stack (postgres, mongo, redis, localstack, 3×API, nginx)"
         env:
           ECC_ENV_FILE: ../.env.ci
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  Step 2/7: Starting docker compose stack"
+          echo "══════════════════════════════════════════"
+
           docker compose \
             --env-file .env.ci \
             -f docker/docker-compose.yml \
             up -d --build
 
-      - name: Wait for nginx / health
+      # ── Step 3/7: Health ─────────────────────────────────────
+      - name: "🏥 Step 3/7 · Wait for nginx + API cluster health"
         run: |
+          echo "── Waiting for stack health (max 7.5 min) ──"
           for i in {1..90}; do
             if curl -sf http://localhost/health 2>/dev/null | grep -q '"status":"up"'; then
-              echo "nginx + API cluster ready."
+              echo "✅ nginx + API cluster ready (attempt $i)."
               break
             fi
-            echo "Waiting for stack... ($i)"
+            echo "⏳ Waiting for stack... ($i/90)"
             sleep 5
           done
-          curl -sf http://localhost/health || { echo "stack never became healthy"; docker compose -f docker/docker-compose.yml logs; exit 1; }
 
-      # Server tự apply migration khi boot (app.go: migrate.Run). Seed vai
-      # trò/quyền + user đã xác thực (để k6 login được) + sản phẩm thật.
-      - name: Seed load-test data
+          curl -sf http://localhost/health || {
+            echo "❌ Stack never became healthy"
+            docker compose -f docker/docker-compose.yml logs
+            exit 1
+          }
+
+      # ── Step 4/7: Seed Postgres ──────────────────────────────
+      - name: "🌱 Step 4/7 · Seed PostgreSQL data (roles, users)"
         run: |
+          echo "── Seeding PostgreSQL data ──"
           export POSTGRES_DSN="postgres://postgres:postgres@localhost:5432/emc_lb?sslmode=disable"
           export SYSTEM_SECRET=ci_loadtest_secret
+
           if [ -f src/cmd/seed/main.go ]; then
-            go run ./src/cmd/seed 2>/dev/null || echo "seed skipped (roles may already exist)"
+            go run ./src/cmd/seed 2>/dev/null || echo "⚠️ Seed skipped (roles may already exist)"
           fi
+
           if [ -f src/cmd/loadtest-seed/main.go ]; then
+            echo "── Creating 200 load test users ──"
             LOADTEST_USERS=200 go run ./src/cmd/loadtest-seed
           fi
 
-      - name: Seed load-test products (MongoDB)
+          echo "✅ PostgreSQL seeding complete."
+
+      # ── Step 5/7: Seed MongoDB ───────────────────────────────
+      - name: "🌱 Step 5/7 · Seed MongoDB data (20 products)"
         env:
           ECC_ENV_FILE: ../.env.ci
         run: |
+          echo "── Seeding MongoDB products ──"
           docker compose --env-file .env.ci -f docker/docker-compose.yml exec -T mongo mongosh --quiet \
             --username root --password mongo_pass --authenticationDatabase admin \
             --eval '
@@ -157,35 +180,43 @@ jobs:
             const ids = dbc.products.find({ slug: /^loadtest-product-/ }, { _id: 1 }).limit(5).map(d => d._id.toString()).toArray();
             print("PRODUCT_IDS=" + ids.join(","));
             ' | grep '^PRODUCT_IDS=' | cut -d= -f2 > /tmp/lt-product-ids
-          echo "Product IDs: $(cat /tmp/lt-product-ids)"
 
-      - name: Install k6
+          echo "✅ Product IDs: $(cat /tmp/lt-product-ids)"
+
+      # ── Step 6/7: k6 ────────────────────────────────────────
+      - name: "📦 Step 6/7 · Install k6 load testing tool"
         run: |
+          echo "── Installing k6 ──"
           sudo apt-get update -q
           if sudo apt-get install -yq k6 2>/dev/null; then
-            echo "k6 installed via apt"
+            echo "✅ k6 installed via apt"
           else
             curl -sL https://github.com/grafana/k6/releases/download/v0.57.0/k6-v0.57.0-linux-amd64.tar.gz \
               -o /tmp/k6.tar.gz
             tar -xzf /tmp/k6.tar.gz -C /tmp
             sudo cp /tmp/k6-v0.57.0-linux-amd64/k6 /usr/local/bin/
-            echo "k6 installed via release binary"
+            echo "✅ k6 installed via release binary"
           fi
           k6 version
 
-      # ------------------------------------------------------------
-      # Chạy load test qua nginx load balancer
-      # ------------------------------------------------------------
-      - name: Run load test (full suite)
+      - name: "🏋️ Step 7/7 · Run k6 load test (full checkout flow)"
         env:
           BASE_URL: http://localhost
           API_KEY: ci_loadtest_api_key
           PRODUCT_IDS: "$(cat /tmp/lt-product-ids)"
           LOADTEST_USER_COUNT: "200"
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  Step 7/7: RUNNING k6 LOAD TEST"
+          echo "  Base URL:    $BASE_URL"
+          echo "  VU count:    200"
+          echo "  Script:      loadtest/checkout-flow.js"
+          echo "══════════════════════════════════════════"
+
           k6 run --summary-export=/tmp/k6-summary.json loadtest/checkout-flow.js
 
-      - name: Upload k6 report
+      # ── Artifacts & Cleanup ──────────────────────────────────
+      - name: "📤 Upload k6 report"
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -193,7 +224,39 @@ jobs:
           path: /tmp/k6-summary.json
           retention-days: 7
 
-      - name: Tear down stack
+      - name: "🧹 Tear down stack"
         if: always()
         run: |
+          echo "── Tearing down docker compose stack ──"
           docker compose --env-file .env.ci -f docker/docker-compose.yml down -v --remove-orphans || true
+
+      - name: "📝 Write Load Test Summary"
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            ICON="✅"; MSG="Load test completed successfully."
+          else
+            ICON="❌"; MSG="Load test failed — check logs above."
+          fi
+
+          {
+            echo "## 📈 Load Test · k6 Performance Suite"
+            echo ""
+            echo "| Detail | Value |"
+            echo "|--------|-------|"
+            echo "| Stack | 3× API nodes behind nginx LB |"
+            echo "| Virtual Users | 200 |"
+            echo "| Script | \`loadtest/checkout-flow.js\` |"
+            echo "| Status | ${ICON} ${MSG} |"
+            echo ""
+
+            # Parse k6 summary if available
+            if [ -f /tmp/k6-summary.json ]; then
+              echo "### k6 Results"
+              echo ""
+              echo '```json'
+              cat /tmp/k6-summary.json | head -50
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

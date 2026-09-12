@@ -1,4 +1,4 @@
-name: Chaos Test
+name: "💥 Chaos · Resilience Testing"
 
 on:
   push:
@@ -19,21 +19,26 @@ env:
 
 jobs:
   chaos-test:
-    name: Chaos / Resilience Test
+    name: "💥 Chaos · Resilience Testing"
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: "⚙️ Setup Go ${{ env.GO_VERSION }}"
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Prepare CI env file
+      - name: "🔧 Prepare CI environment file"
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  CHAOS · RESILIENCE TESTING"
+          echo "  Step 1/4: Preparing environment"
+          echo "══════════════════════════════════════════"
+
           cat > .env.ci <<'EOF'
           APP_PORT=8080
           APP_ENV=test
@@ -79,7 +84,9 @@ jobs:
           SEPAY_SECRET_KEY=test
           EOF
 
-      - name: Run chaos tests
+          echo "✅ Environment file created."
+
+      - name: "💥 Run chaos / resilience tests"
         env:
           ECC_ENV_FILE_ABS: .env.ci
           ECC_ENV_FILE: ../.env.ci
@@ -87,14 +94,44 @@ jobs:
           BASE_URL: http://localhost
           API_KEY: ci_chaos_api_key
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  CHAOS · RESILIENCE TESTING"
+          echo "  Step 2/4: Running chaos test suite"
+          echo "══════════════════════════════════════════"
+
           bash chaos/chaos-test.sh
 
-      - name: Collect logs on failure
+      - name: "📋 Collect logs on failure"
         if: failure()
         run: |
+          echo "── Collecting docker compose logs (last 100 lines) ──"
           docker compose --env-file .env.ci -f docker/docker-compose.yml logs --tail=100 || true
 
-      - name: Tear down stack
+      - name: "🧹 Tear down stack"
         if: always()
         run: |
+          echo "── Tearing down docker compose stack ──"
           docker compose --env-file .env.ci -f docker/docker-compose.yml down -v --remove-orphans || true
+
+      - name: "📝 Write Chaos Test Summary"
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            ICON="✅"; MSG="All resilience scenarios passed."
+          else
+            ICON="❌"; MSG="Chaos test failures detected — check logs above."
+          fi
+
+          {
+            echo "## 💥 Chaos · Resilience Testing"
+            echo ""
+            echo "| Detail | Value |"
+            echo "|--------|-------|"
+            echo "| Stack | PostgreSQL + MongoDB + Redis + Localstack + API + Nginx |"
+            echo "| Test Script | \`chaos/chaos-test.sh\` |"
+            echo "| Status | ${ICON} ${MSG} |"
+            echo ""
+            echo "Chaos tests validate recovery from: service crashes, network partitions,"
+            echo "database disconnects, Redis unavailability, and partial failures."
+          } >> "$GITHUB_STEP_SUMMARY"

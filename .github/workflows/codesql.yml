@@ -1,4 +1,4 @@
-name: CodeQL
+name: "🔬 CodeQL · Semantic Analysis"
 
 on:
   push:
@@ -19,23 +19,45 @@ concurrency:
 
 jobs:
   analyze:
-    name: Analyze
+    name: "🔬 CodeQL · Analyze Go"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         language: ["go"]
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Initialize CodeQL
+      - name: "🔬 Initialize CodeQL (${{ matrix.language }})"
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
 
-      - name: Autobuild
+      - name: "🏗️ Autobuild"
         uses: github/codeql-action/autobuild@v3
 
-      - name: Perform CodeQL Analysis
+      - name: "🔍 Perform CodeQL analysis"
         uses: github/codeql-action/analyze@v3
+
+      - name: "📝 Write CodeQL Summary"
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            ICON="✅"; MSG="No security issues detected."
+          else
+            ICON="❌"; MSG="Security issues found — check Security tab for details."
+          fi
+
+          {
+            echo "## 🔬 CodeQL · Semantic Analysis"
+            echo ""
+            echo "| Detail | Value |"
+            echo "|--------|-------|"
+            echo "| Language | Go |"
+            echo "| Schedule | Weekly (Monday 03:00 UTC) |"
+            echo "| Status | ${ICON} ${MSG} |"
+            echo ""
+            echo "Results are available in the **Security** tab → **Code scanning alerts**."
+          } >> "$GITHUB_STEP_SUMMARY"
