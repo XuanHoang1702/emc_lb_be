@@ -3,8 +3,8 @@ package ecstore_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"crypto/rand"
+	"errors"
 	"testing"
 
 	"emc_lb/src/pkg/ecstore"
