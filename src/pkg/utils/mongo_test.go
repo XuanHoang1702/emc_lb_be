@@ -39,15 +39,19 @@ func TestBuildMongoURI(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear relevant env vars.
-			os.Unsetenv("MONGO_URI")
-			os.Unsetenv("MONGO_INITDB_ROOT_URL")
+			if err := os.Unsetenv("MONGO_URI"); err != nil {
+				t.Fatalf("failed to unset MONGO_URI: %v", err)
+			}
+			if err := os.Unsetenv("MONGO_INITDB_ROOT_URL"); err != nil {
+				t.Fatalf("failed to unset MONGO_INITDB_ROOT_URL: %v", err)
+			}
 			t.Cleanup(func() {
-				os.Unsetenv("MONGO_URI")
-				os.Unsetenv("MONGO_INITDB_ROOT_URL")
+				_ = os.Unsetenv("MONGO_URI")
+				_ = os.Unsetenv("MONGO_INITDB_ROOT_URL")
 			})
 
 			for k, v := range tt.envVars {
-				os.Setenv(k, v)
+				t.Setenv(k, v)
 			}
 
 			got, err := BuildMongoURI()
@@ -84,11 +88,13 @@ func TestGetMongoDatabaseName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Unsetenv("MONGO_DB")
-			t.Cleanup(func() { os.Unsetenv("MONGO_DB") })
+			if err := os.Unsetenv("MONGO_DB"); err != nil {
+				t.Fatalf("failed to unset MONGO_DB: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Unsetenv("MONGO_DB") })
 
 			if tt.envVal != "" {
-				os.Setenv("MONGO_DB", tt.envVal)
+				t.Setenv("MONGO_DB", tt.envVal)
 			}
 
 			got := GetMongoDatabaseName()

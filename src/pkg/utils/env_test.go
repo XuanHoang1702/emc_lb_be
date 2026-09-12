@@ -22,10 +22,10 @@ func TestGetEnv(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up after test.
-			t.Cleanup(func() { os.Unsetenv(tt.key) })
+			t.Cleanup(func() { _ = os.Unsetenv(tt.key) })
 
 			if tt.envVal != "" {
-				os.Setenv(tt.key, tt.envVal)
+				t.Setenv(tt.key, tt.envVal)
 			}
 
 			got := GetEnv(tt.key, tt.fallback)
