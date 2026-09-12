@@ -59,7 +59,8 @@ func BuildMongoURI() string {
 		return value
 	}
 
-	return "mongodb://admin:admin@localhost:27017/?authSource=admin"
+	// No hardcoded credentials — require MONGO_URI or MONGO_INITDB_ROOT_URL env var.
+	return ""
 }
 
 func GetMongoDatabaseName() string {
