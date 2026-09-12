@@ -21,12 +21,8 @@ func TestEmbeddedMigrationsSource(t *testing.T) {
 	// embed.go file must be filtered out by golang-migrate's filename pattern.
 	var versions []uint
 	version, err := source.First()
-	for {
-		if err != nil {
-			break
-		}
+	for ; err == nil; version, err = source.Next(version) {
 		versions = append(versions, version)
-		version, err = source.Next(version)
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("expected fs.ErrNotExist at end of migrations, got %v", err)
