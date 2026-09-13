@@ -7,9 +7,23 @@ import (
 	"time"
 
 	"emc_lb/src/internal/service"
+	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/entities"
 	"emc_lb/src/pkg/res"
 )
+
+func testPaymentConfig(secretKey string) *config.AppConfig {
+	return &config.AppConfig{
+		Payment: config.PaymentSettings{
+			SepayEnv:        "sandbox",
+			SepayMerchantID: "test-merchant",
+			SepaySecretKey:  secretKey,
+			SepaySuccessURL: "http://localhost/success",
+			SepayErrorURL:   "http://localhost/error",
+			SepayCancelURL:  "http://localhost/cancel",
+		},
+	}
+}
 
 // stubOrderSvc for payment testing
 type stubPaymentOrderSvc struct {
@@ -44,8 +58,6 @@ func (s *stubPaymentOrderSvc) UpdateOrderStatus(_ context.Context, _ string, _ s
 }
 
 func TestProcessIPN_OrderPaid(t *testing.T) {
-	t.Setenv("SEPAY_SECRET_KEY", "test-secret")
-
 	var markedInvoice string
 	orderSvc := &stubPaymentOrderSvc{
 		markAsPaidFn: func(inv string, amount float64) error {
@@ -54,7 +66,7 @@ func TestProcessIPN_OrderPaid(t *testing.T) {
 		},
 	}
 
-	svc := service.NewPaymentService(orderSvc)
+	svc := service.NewPaymentService(testPaymentConfig("test-secret"), orderSvc)
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
 		Timestamp:        time.Now().Unix(),
@@ -80,7 +92,7 @@ func TestProcessIPN_OrderPaid(t *testing.T) {
 func TestProcessIPN_InvalidSecret(t *testing.T) {
 	t.Setenv("SEPAY_SECRET_KEY", "correct-secret")
 
-	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
+	svc := service.NewPaymentService(testPaymentConfig("test-secret"), &stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
 		Timestamp:        time.Now().Unix(),
@@ -106,7 +118,7 @@ func TestProcessIPN_InvalidSecret(t *testing.T) {
 func TestProcessIPN_ExpiredTimestamp(t *testing.T) {
 	t.Setenv("SEPAY_SECRET_KEY", "test-secret")
 
-	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
+	svc := service.NewPaymentService(testPaymentConfig("test-secret"), &stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
 		Timestamp:        time.Now().Add(-10 * time.Minute).Unix(),
@@ -132,7 +144,7 @@ func TestProcessIPN_ExpiredTimestamp(t *testing.T) {
 func TestProcessIPN_IgnoreNonOrderPaid(t *testing.T) {
 	t.Setenv("SEPAY_SECRET_KEY", "test-secret")
 
-	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
+	svc := service.NewPaymentService(testPaymentConfig("test-secret"), &stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
 		Timestamp:        time.Now().Unix(),
@@ -146,7 +158,7 @@ func TestProcessIPN_IgnoreNonOrderPaid(t *testing.T) {
 func TestProcessIPN_IgnoreNonCaptured(t *testing.T) {
 	t.Setenv("SEPAY_SECRET_KEY", "test-secret")
 
-	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
+	svc := service.NewPaymentService(testPaymentConfig("test-secret"), &stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
 		Timestamp:        time.Now().Unix(),
@@ -163,7 +175,7 @@ func TestProcessIPN_IgnoreNonCaptured(t *testing.T) {
 func TestProcessIPN_MissingInvoice(t *testing.T) {
 	t.Setenv("SEPAY_SECRET_KEY", "test-secret")
 
-	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
+	svc := service.NewPaymentService(testPaymentConfig("test-secret"), &stubPaymentOrderSvc{})
 
 	err := svc.ProcessIPN(context.Background(), entities.SePayIPNRequest{
 		Timestamp:        time.Now().Unix(),
@@ -186,8 +198,8 @@ func TestProcessIPN_MissingInvoice(t *testing.T) {
 }
 
 func TestInitCheckout_MissingConfig(t *testing.T) {
-	// NewPaymentService reads from env; with no env set, merchant/secret are empty
-	svc := service.NewPaymentService(&stubPaymentOrderSvc{})
+	// Pass config with empty payment settings to trigger "not configured" error
+	svc := service.NewPaymentService(&config.AppConfig{}, &stubPaymentOrderSvc{})
 
 	_, err := svc.InitCheckout(context.Background(), entities.CheckoutInitRequest{
 		OrderAmount:        500000,

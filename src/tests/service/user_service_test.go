@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-
 	"time"
 
 	"emc_lb/src/internal/service"
@@ -14,6 +13,7 @@ import (
 	"emc_lb/src/pkg/res"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -77,7 +77,7 @@ func TestUserService_Register_Success(t *testing.T) {
 	// Arrange
 	repo.EXPECT().
 		GetByEmail(ctx, req.Email).
-		Return(entities.User{}, errors.New("not found"))
+		Return(entities.User{}, pgx.ErrNoRows)
 
 	repo.EXPECT().
 		Create(ctx, gomock.Any()).

@@ -70,6 +70,19 @@ func (r *stubCouponRepository) IncrementUsage(_ context.Context, code string, co
 	return nil
 }
 
+func (r *stubCouponRepository) ValidateAndIncrementUsage(_ context.Context, code string, _ float64) (entities.Coupon, error) {
+	c, ok := r.coupons[code]
+	if !ok {
+		return entities.Coupon{}, errors.New("not found")
+	}
+	if c.UsageLimit > 0 && c.UsageCount >= c.UsageLimit {
+		return entities.Coupon{}, errors.New("usage limit exceeded")
+	}
+	c.UsageCount++
+	r.coupons[code] = c
+	return c, nil
+}
+
 func validCoupon() entities.Coupon {
 	return entities.Coupon{
 		ID:             "coupon-1",

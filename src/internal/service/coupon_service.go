@@ -10,6 +10,7 @@ import (
 	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
+	"emc_lb/src/pkg/logs"
 	"emc_lb/src/pkg/res"
 )
 
@@ -20,6 +21,10 @@ type CouponService interface {
 	Update(ctx context.Context, id string, req entities.UpdateCouponRequest) (entities.CouponResponse, error)
 	ValidateCouponForAmount(ctx context.Context, code string, amount float64) (entities.Coupon, error)
 	IncrementUsage(ctx context.Context, code string, count int64) error
+	// ValidateAndIncrementUsage atomically validates all coupon conditions and
+	// increments usage count. Used by order creation to prevent TOCTOU races.
+	// Cart preview should use ValidateCouponForAmount instead (read-only).
+	ValidateAndIncrementUsage(ctx context.Context, code string, orderAmount float64) (entities.Coupon, error)
 }
 
 type couponService struct {
@@ -66,7 +71,9 @@ func (s *couponService) Create(ctx context.Context, req entities.CreateCouponReq
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.InvalidateAll(ctx)
+		if cacheErr := s.cacheStore.InvalidateAll(ctx); cacheErr != nil {
+			logs.WithContext(ctx).Warn("cache invalidation failed after coupon creation", "error", cacheErr)
+		}
 	}
 
 	return s.toResponse(created), nil
@@ -87,7 +94,9 @@ func (s *couponService) GetByCode(ctx context.Context, code string) (entities.Co
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.SetByCode(ctx, normalized, coupon)
+		if cacheErr := s.cacheStore.SetByCode(ctx, normalized, coupon); cacheErr != nil {
+			logs.WithContext(ctx).Warn("cache set failed", "coupon_code", normalized, "error", cacheErr)
+		}
 	}
 
 	return s.toResponse(coupon), nil
@@ -111,7 +120,9 @@ func (s *couponService) List(ctx context.Context) ([]entities.CouponResponse, er
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.SetAll(ctx, responses)
+		if cacheErr := s.cacheStore.SetAll(ctx, responses); cacheErr != nil {
+			logs.WithContext(ctx).Warn("cache set all failed", "error", cacheErr)
+		}
 	}
 
 	return responses, nil
@@ -155,7 +166,10 @@ func (s *couponService) Update(ctx context.Context, id string, req entities.Upda
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.InvalidateByCode(ctx, updated.Code)
+		if cacheErr := s.cacheStore.InvalidateByCode(ctx, updated.Code); cacheErr != nil {
+			logs.WithContext(ctx).Warn("cache invalidation failed after coupon update",
+				"coupon_code", updated.Code, "error", cacheErr)
+		}
 	}
 
 	return s.toResponse(updated), nil
@@ -182,7 +196,10 @@ func (s *couponService) ValidateCouponForAmount(ctx context.Context, code string
 			}
 		}
 		if s.cacheStore != nil {
-			_ = s.cacheStore.SetByCode(ctx, normalized, coupon)
+			if cacheErr := s.cacheStore.SetByCode(ctx, normalized, coupon); cacheErr != nil {
+				logs.WithContext(ctx).Warn("cache set failed during validation",
+					"coupon_code", normalized, "error", cacheErr)
+			}
 		}
 	}
 
@@ -228,10 +245,35 @@ func (s *couponService) IncrementUsage(ctx context.Context, code string, count i
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.InvalidateByCode(ctx, code)
+		if cacheErr := s.cacheStore.InvalidateByCode(ctx, code); cacheErr != nil {
+			logs.WithContext(ctx).Warn("cache invalidation failed after increment usage",
+				"coupon_code", code, "error", cacheErr)
+		}
 	}
 
 	return nil
+}
+
+func (s *couponService) ValidateAndIncrementUsage(ctx context.Context, code string, orderAmount float64) (entities.Coupon, error) {
+	normalized := strings.ToUpper(code)
+
+	coupon, err := s.couponRepository.ValidateAndIncrementUsage(ctx, normalized, orderAmount)
+	if err != nil {
+		return entities.Coupon{}, &res.AppError{
+			Message:    "Coupon is invalid, expired, or usage limit exceeded",
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
+	if s.cacheStore != nil {
+		if cacheErr := s.cacheStore.InvalidateByCode(ctx, normalized); cacheErr != nil {
+			logs.WithContext(ctx).Warn("cache invalidation failed after coupon usage",
+				"coupon_code", normalized, "error", cacheErr)
+		}
+	}
+
+	return coupon, nil
 }
 
 func (s *couponService) toResponse(c entities.Coupon) entities.CouponResponse {

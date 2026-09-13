@@ -70,9 +70,9 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 			StatusCode: http.StatusConflict,
 		}
 	}
-	// if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-	// 	return entities.RegisterUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
-	// }
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return entities.RegisterUserResponse{}, res.WrapError(err, "Cannot check email availability", erres.CommonInternal)
+	}
 
 	passwordHash, err := utils.HashPassword(normalizedRequest.Password, s.cfg.App.SystemSecret)
 	if err != nil {

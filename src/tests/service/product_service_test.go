@@ -188,6 +188,20 @@ func (r *listableProductRepo) UpdateStock(_ context.Context, id string, delta in
 	return nil
 }
 
+func (r *listableProductRepo) DeductStock(_ context.Context, id string, quantity int64) error {
+	p, ok := r.products[id]
+	if !ok {
+		return errors.New("not found")
+	}
+	if p.Stock < quantity {
+		return errors.New("insufficient stock")
+	}
+	p.Stock -= quantity
+	p.SoldCount += quantity
+	r.products[id] = p
+	return nil
+}
+
 func TestList_CacheHit(t *testing.T) {
 	productRepo := newListableProductRepo()
 	productRepo.products["p1"] = entities.Product{ID: "p1", Name: "Cached Product", Price: 100}

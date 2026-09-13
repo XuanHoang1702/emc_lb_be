@@ -154,7 +154,7 @@ func New() (*App, error) {
 	}
 
 	orderMod := module.NewOrderModule(mongoDB, mongoClient, couponMod.ServiceInstance(), redisClient, productMod.CacheStore())
-	paymentMod := module.NewPaymentModule(orderMod.Service())
+	paymentMod := module.NewPaymentModule(cfg, orderMod.Service())
 	cartMod := module.NewCartModule(mongoDB, productMod.Repository(), couponMod.ServiceInstance())
 	shopMod := module.NewShopModule(mongoDB, redisClient)
 	userMod := module.NewUserModule(cfg, queries, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
