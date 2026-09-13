@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"os"
 	"testing"
 	"time"
 )
@@ -74,11 +73,9 @@ func TestGetDurationFromEnv(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			const key = "TEST_DURATION_ENV"
-			os.Unsetenv(key)
-			t.Cleanup(func() { os.Unsetenv(key) })
-
+			t.Setenv(key, "")
 			if tt.envVal != "" {
-				os.Setenv(key, tt.envVal)
+				t.Setenv(key, tt.envVal)
 			}
 
 			got := GetDurationFromEnv(key, tt.fallback)
