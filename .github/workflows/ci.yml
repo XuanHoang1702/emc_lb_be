@@ -1,14 +1,13 @@
-name: CI
+name: "🔄 CI · Continuous Integration Pipeline"
 
 on:
   push:
-    branches:
-      - main
-      - develop
+    branches-ignore:
+      - dependabot/**
 
   pull_request:
     branches:
-      - main
+      - master
       - develop
 
 permissions:
@@ -25,89 +24,158 @@ env:
 
 jobs:
 
-  # ============================================================
-  # 1. FORMAT
-  # ============================================================
+  # ╔══════════════════════════════════════════════════════════════╗
+  # ║  PHASE 1 · FORMAT CHECK                                     ║
+  # ║  Gate: code must be gofmt-formatted                         ║
+  # ╚══════════════════════════════════════════════════════════════╝
   format:
-    name: Check Formatting
+    name: "🔍 Phase 1 · Format Check"
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: "⚙️ Setup Go ${{ env.GO_VERSION }}"
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Check gofmt
+      - name: "🔍 Check gofmt formatting"
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  PHASE 1/6 · FORMAT CHECK"
+          echo "══════════════════════════════════════════"
+
           files=$(gofmt -l .)
 
           if [ -n "$files" ]; then
-            echo "The following files are not formatted:"
+            count=$(echo "$files" | wc -l)
+
+            echo "❌ $count file(s) are not formatted"
             echo "$files"
             echo ""
-            echo "Run: gofmt -w ."
+            echo "Fix: gofmt -w ."
+
+            {
+              echo "## 🔍 Phase 1 · Format Check — ❌ FAILED"
+              echo ""
+              echo "**$count file(s)** are not properly formatted."
+              echo ""
+              echo '```'
+              echo "$files"
+              echo '```'
+              echo ""
+              echo '> Run `gofmt -w .` to fix.'
+            } >> "$GITHUB_STEP_SUMMARY"
+
             exit 1
           fi
 
-          echo "gofmt check passed."
+          echo "✅ All files are properly formatted."
+
+          {
+            echo "## 🔍 Phase 1 · Format Check — ✅ PASSED"
+            echo ""
+            echo "All Go source files are properly formatted."
+          } >> "$GITHUB_STEP_SUMMARY"
 
 
-  # ============================================================
-  # 2. STATIC ANALYSIS
-  # ============================================================
+  # ╔══════════════════════════════════════════════════════════════╗
+  # ║  PHASE 2 · LINT & STATIC ANALYSIS                           ║
+  # ║  Gate: go vet, golangci-lint, govulncheck, gitleaks          ║
+  # ╚══════════════════════════════════════════════════════════════╝
   lint:
-    name: Lint & Static Analysis
+    name: "🛡️ Phase 2 · Lint & Static Analysis"
     runs-on: ubuntu-latest
     needs: format
+    permissions:
+      contents: read
+      pull-requests: read
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository (full history)"
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Setup Go
+      - name: "⚙️ Setup Go ${{ env.GO_VERSION }}"
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Verify go.mod and go.sum
+      - name: "📦 Verify go.mod / go.sum consistency"
         run: |
+          echo "── Verifying module consistency ──"
           go mod tidy
-          git diff --exit-code -- go.mod go.sum
+          if ! git diff --exit-code -- go.mod go.sum; then
+            echo "❌ go.mod or go.sum is out of sync. Run: go mod tidy"
+            exit 1
+          fi
+          echo "✅ go.mod and go.sum are consistent."
 
-      - name: Go Vet
-        run: go vet ./...
+      - name: "🔬 Go Vet"
+        id: govet
+        run: |
+          echo "── Running go vet ──"
+          go vet ./...
+          echo "status=pass" >> "$GITHUB_OUTPUT"
 
-      - name: GolangCI Lint
+      - name: "🧹 GolangCI Lint"
+        id: golint
         uses: golangci/golangci-lint-action@v7
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           args: --timeout=10m
           install-mode: binary
 
-      - name: Go Vulnerability Check
+      - name: "🛡️ Go Vulnerability Check"
+        id: vulncheck
         run: |
+          echo "── Running govulncheck ──"
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+          echo "status=pass" >> "$GITHUB_OUTPUT"
 
-      - name: Gitleaks Secret Scan
+      - name: "🔑 Gitleaks Secret Scan"
+        id: gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: "📝 Write Phase 2 Summary"
+        if: always()
+        run: |
+          echo "══════════════════════════════════════════"
+          echo "  PHASE 2/6 · LINT & STATIC ANALYSIS"
+          echo "══════════════════════════════════════════"
 
-  # ============================================================
-  # 3. UNIT TEST
-  # ============================================================
+          {
+            echo "## 🛡️ Phase 2 · Lint & Static Analysis"
+            echo ""
+            echo "| Check | Status |"
+            echo "|-------|--------|"
+            echo "| go mod tidy | ✅ Consistent |"
+            echo "| go vet | ${{ steps.govet.outcome == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| golangci-lint | ${{ steps.golint.outcome == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| govulncheck | ${{ steps.vulncheck.outcome == 'success' && '✅ No vulnerabilities' || '❌ Vulnerabilities found' }} |"
+            echo "| gitleaks | ${{ steps.gitleaks.outcome == 'success' && '✅ No secrets' || '❌ Secrets detected' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+
+  # ╔══════════════════════════════════════════════════════════════╗
+  # ║  PHASE 3 · TEST & SECURITY  (4 parallel jobs: a/b/c/d)      ║
+  # ║  All run in parallel after lint passes                       ║
+  # ╚══════════════════════════════════════════════════════════════╝
+
+  # ── Phase 3a ─────────────────────────────────────────────────
   unit-test:
-    name: Unit Tests
+    name: "🧪 Phase 3a · Unit Tests"
     runs-on: ubuntu-latest
     needs: lint
+    # Parallel with: race-test, integration-test, security, benchmark
 
     env:
       SYSTEM_SECRET: "test_system_secret"
@@ -115,46 +183,83 @@ jobs:
       APP_ENV: "test"
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: "⚙️ Setup Go ${{ env.GO_VERSION }}"
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Run Unit Tests
+      - name: "🧪 Run unit tests with coverage"
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  PHASE 3a · UNIT TESTS"
+          echo "  Parallel with: 3b Race, 3c Integration,"
+          echo "                 3d Security, 3e Benchmark"
+          echo "══════════════════════════════════════════"
+
           go test -v \
             -covermode=atomic \
             -coverpkg=./... \
             -coverprofile=coverage.out \
             ./...
 
-      - name: Check Coverage
+      - name: "📊 Check coverage threshold (≥ ${{ env.COVERAGE_THRESHOLD }}%)"
+        id: coverage
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | \
             grep '^total:' | \
             awk '{print substr($3, 1, length($3)-1)}')
 
-          echo "======================================"
-          echo "Total Coverage: ${COVERAGE}%"
-          echo "Required: ${COVERAGE_THRESHOLD}%"
-          echo "======================================"
+          echo "coverage=$COVERAGE" >> "$GITHUB_OUTPUT"
+
+          echo "══════════════════════════════════════════"
+          echo "  Total Coverage: ${COVERAGE}%"
+          echo "  Required:       ${COVERAGE_THRESHOLD}%"
+          echo "══════════════════════════════════════════"
 
           awk -v coverage="$COVERAGE" \
               -v threshold="$COVERAGE_THRESHOLD" \
               'BEGIN {
                 if (coverage < threshold) {
-                  print "Coverage is below required threshold."
+                  print "❌ Coverage is below required threshold."
                   exit 1
                 }
 
-                print "Coverage check passed."
+                print "✅ Coverage check passed."
               }'
 
-      - name: Upload Coverage
+      - name: "📝 Write Phase 3a Summary"
+        if: always()
+        run: |
+          COV="${{ steps.coverage.outputs.coverage }}"
+          THRESHOLD="${{ env.COVERAGE_THRESHOLD }}"
+
+          if [ -z "$COV" ]; then
+            COV="N/A"
+            ICON="❌"
+            VERDICT="Tests failed before coverage could be measured"
+          elif awk -v c="$COV" -v t="$THRESHOLD" 'BEGIN{exit(c<t?0:1)}'; then
+            ICON="❌"
+            VERDICT="Below threshold"
+          else
+            ICON="✅"
+            VERDICT="Meets threshold"
+          fi
+
+          {
+            echo "## 🧪 Phase 3a · Unit Tests"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| Coverage | **${COV}%** (required: ≥${THRESHOLD}%) ${ICON} |"
+            echo "| Verdict | ${VERDICT} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "📤 Upload coverage artifact"
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
@@ -162,13 +267,12 @@ jobs:
           retention-days: 7
 
 
-  # ============================================================
-  # 4. RACE DETECTOR
-  # ============================================================
+  # ── Phase 3b ─────────────────────────────────────────────────
   race-test:
-    name: Race Detector
+    name: "🧪 Phase 3b · Race Detector"
     runs-on: ubuntu-latest
     needs: lint
+    # Parallel with: unit-test, integration-test, security, benchmark
 
     env:
       SYSTEM_SECRET: "test_system_secret"
@@ -176,30 +280,49 @@ jobs:
       APP_ENV: "test"
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: "⚙️ Setup Go ${{ env.GO_VERSION }}"
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Run Race Tests
+      - name: "🏁 Run tests with race detector"
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  PHASE 3b · RACE DETECTOR"
+          echo "══════════════════════════════════════════"
+
           go test \
             -race \
             -count=1 \
             ./...
 
+      - name: "📝 Write Phase 3b Summary"
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            ICON="✅"; MSG="No data races detected."
+          else
+            ICON="❌"; MSG="Data race(s) detected — check logs above."
+          fi
 
-  # ============================================================
-  # 5. INTEGRATION TEST
-  # ============================================================
+          {
+            echo "## 🧪 Phase 3b · Race Detector"
+            echo ""
+            echo "${ICON} ${MSG}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+
+  # ── Phase 3c ─────────────────────────────────────────────────
   integration-test:
-    name: Integration Tests
+    name: "🧪 Phase 3c · Integration Tests"
     runs-on: ubuntu-latest
     needs: lint
+    # Parallel with: unit-test, race-test, security, benchmark
 
     services:
 
@@ -246,88 +369,132 @@ jobs:
       REDIS_PORT: 6379
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: "⚙️ Setup Go ${{ env.GO_VERSION }}"
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Wait for PostgreSQL
+      - name: "🐘 Wait for PostgreSQL readiness"
         run: |
+          echo "── Waiting for PostgreSQL ──"
           for i in {1..30}; do
             if pg_isready -h localhost -p 5432 -U postgres; then
-              echo "PostgreSQL is ready."
+              echo "✅ PostgreSQL is ready."
               break
             fi
 
-            echo "Waiting for PostgreSQL..."
+            echo "⏳ Waiting for PostgreSQL... ($i/30)"
             sleep 2
           done
 
-      - name: Wait for Redis
+      - name: "🔴 Wait for Redis readiness"
         run: |
+          echo "── Waiting for Redis ──"
           for i in {1..30}; do
             if redis-cli -h localhost -p 6379 ping | grep -q PONG; then
-              echo "Redis is ready."
+              echo "✅ Redis is ready."
               break
             fi
 
-            echo "Waiting for Redis..."
+            echo "⏳ Waiting for Redis... ($i/30)"
             sleep 2
           done
 
-      - name: Run Integration Tests
+      - name: "🧪 Run integration tests (with race detector)"
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  PHASE 3c · INTEGRATION TESTS"
+          echo "  Services: PostgreSQL 17, Redis 7"
+          echo "══════════════════════════════════════════"
+
           go test -v \
             -race \
             -count=1 \
             ./...
 
+      - name: "📝 Write Phase 3c Summary"
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            ICON="✅"; MSG="All integration tests passed."
+          else
+            ICON="❌"; MSG="Integration test failures detected — check logs above."
+          fi
 
-  # ============================================================
-  # 6. SECURITY
-  # ============================================================
+          {
+            echo "## 🧪 Phase 3c · Integration Tests"
+            echo ""
+            echo "| Service | Version |"
+            echo "|---------|---------|"
+            echo "| PostgreSQL | 17 |"
+            echo "| Redis | 7 |"
+            echo ""
+            echo "${ICON} ${MSG}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+
+  # ── Phase 3d ─────────────────────────────────────────────────
   security:
-    name: Security Scan
+    name: "🔒 Phase 3d · Security Scan"
     runs-on: ubuntu-latest
     needs: lint
+    # Parallel with: unit-test, race-test, integration-test, benchmark
 
     permissions:
       contents: read
       security-events: write
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: "⚙️ Setup Go ${{ env.GO_VERSION }}"
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Run Govulncheck
+      - name: "🛡️ Run Govulncheck"
+        id: vulncheck
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  PHASE 3d · SECURITY SCAN"
+          echo "  Tool 1/2: govulncheck"
+          echo "══════════════════════════════════════════"
+
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
-      - name: Run Gosec
+      - name: "🔍 Run Gosec"
+        id: gosec
         uses: securego/gosec@master
         with:
           args: ./...
 
+      - name: "📝 Write Phase 3d Summary"
+        if: always()
+        run: |
+          {
+            echo "## 🔒 Phase 3d · Security Scan"
+            echo ""
+            echo "| Scanner | Status |"
+            echo "|---------|--------|"
+            echo "| govulncheck | ${{ steps.vulncheck.outcome == 'success' && '✅ No known vulnerabilities' || '❌ Vulnerabilities found' }} |"
+            echo "| gosec | ${{ steps.gosec.outcome == 'success' && '✅ No issues' || '❌ Issues found' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-  # ============================================================
-  # 7. BENCHMARK
-  # ============================================================
+
+  # ── Phase 3e ─────────────────────────────────────────────────
   benchmark:
-    name: Benchmark Performance
+    name: "📊 Phase 3e · Benchmark"
     runs-on: ubuntu-latest
-    needs: integration-test
-    continue-on-error: true
+    needs: lint
+    # Parallel with: unit-test, race-test, integration-test, security
 
     services:
       postgres:
@@ -367,47 +534,68 @@ jobs:
       REDIS_PORT: 6379
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: "⚙️ Setup Go ${{ env.GO_VERSION }}"
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Wait for PostgreSQL
+      - name: "🐘 Wait for PostgreSQL readiness"
         run: |
           for i in {1..30}; do
             if pg_isready -h localhost -p 5432 -U postgres; then
-              echo "PostgreSQL is ready."
+              echo "✅ PostgreSQL is ready."
               break
             fi
-            echo "Waiting for PostgreSQL..."
+            echo "⏳ Waiting for PostgreSQL... ($i/30)"
             sleep 2
           done
 
-      - name: Wait for Redis
+      - name: "🔴 Wait for Redis readiness"
         run: |
           for i in {1..30}; do
             if redis-cli -h localhost -p 6379 ping | grep -q PONG; then
-              echo "Redis is ready."
+              echo "✅ Redis is ready."
               break
             fi
-            echo "Waiting for Redis..."
+            echo "⏳ Waiting for Redis... ($i/30)"
             sleep 2
           done
 
-      - name: Run Benchmarks
+      - name: "📊 Run benchmark suite"
         run: |
-          go test -bench=. -benchmem -run=^$ ./src/tests/benchmark/...
+          echo "══════════════════════════════════════════"
+          echo "  PHASE 3e · BENCHMARK"
+          echo "══════════════════════════════════════════"
+
+          go test -bench=. -benchmem -run=^$ ./src/tests/benchmark/... \
+            | tee /tmp/bench-output.txt
+
+      - name: "📝 Write Phase 3e Summary"
+        if: always()
+        run: |
+          {
+            echo "## 📊 Phase 3e · Benchmark"
+            echo ""
+            if [ -f /tmp/bench-output.txt ]; then
+              echo '```'
+              grep -E '^Benchmark|^ok' /tmp/bench-output.txt || echo "No benchmark results captured."
+              echo '```'
+            else
+              echo "⚠️ Benchmark output not available."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
 
-  # ============================================================
-  # 8. BUILD
-  # ============================================================
+  # ╔══════════════════════════════════════════════════════════════╗
+  # ║  PHASE 4 · BUILD APPLICATION                                ║
+  # ║  Gate: all Phase 3 jobs must pass                            ║
+  # ╚══════════════════════════════════════════════════════════════╝
   build:
-    name: Build Application
+    name: "🏗️ Phase 4 · Build Application"
     runs-on: ubuntu-latest
     needs:
       - unit-test
@@ -417,72 +605,110 @@ jobs:
       - security
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: "⚙️ Setup Go ${{ env.GO_VERSION }}"
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Build
+      - name: "🏗️ Build server and worker binaries"
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  PHASE 4/6 · BUILD APPLICATION"
+          echo "══════════════════════════════════════════"
+
+          echo "── Building server ──"
           go build \
             -trimpath \
             -buildvcs=true \
             -o bin/server \
             ./src/cmd/server
 
+          echo "── Building worker ──"
           go build \
             -trimpath \
             -buildvcs=true \
             -o bin/worker \
             ./src/cmd/worker
 
-      - name: Verify Binary
+      - name: "✅ Verify build artifacts"
+        id: verify
         run: |
+          echo "── Verifying binaries ──"
+
           test -f bin/server || {
-            echo "Server build artifact was not created."
+            echo "❌ Server binary not found."
             exit 1
           }
           test -f bin/worker || {
-            echo "Worker build artifact was not created."
+            echo "❌ Worker binary not found."
             exit 1
           }
 
-          echo "Build successful."
+          SERVER_SIZE=$(du -h bin/server | awk '{print $1}')
+          WORKER_SIZE=$(du -h bin/worker | awk '{print $1}')
+
+          echo "server_size=$SERVER_SIZE" >> "$GITHUB_OUTPUT"
+          echo "worker_size=$WORKER_SIZE" >> "$GITHUB_OUTPUT"
+
+          echo "✅ Build successful."
+          echo "  Server: $SERVER_SIZE"
+          echo "  Worker: $WORKER_SIZE"
+
+      - name: "📝 Write Phase 4 Summary"
+        if: always()
+        run: |
+          {
+            echo "## 🏗️ Phase 4 · Build Application"
+            echo ""
+            echo "| Binary | Size | Status |"
+            echo "|--------|------|--------|"
+            echo "| server | ${{ steps.verify.outputs.server_size || 'N/A' }} | ${{ job.status == 'success' && '✅ Built' || '❌ Failed' }} |"
+            echo "| worker | ${{ steps.verify.outputs.worker_size || 'N/A' }} | ${{ job.status == 'success' && '✅ Built' || '❌ Failed' }} |"
+            echo ""
+            echo "Build flags: \`-trimpath -buildvcs=true\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
 
-  # ============================================================
-  # 9. DOCKER BUILD
-  # ============================================================
+  # ╔══════════════════════════════════════════════════════════════╗
+  # ║  PHASE 5 · DOCKER BUILD & VULNERABILITY SCAN                ║
+  # ║  Gate: Phase 4 build must pass                               ║
+  # ╚══════════════════════════════════════════════════════════════╝
   docker:
-    name: Docker Build
+    name: "🐳 Phase 5 · Docker Build & Scan"
     runs-on: ubuntu-latest
     needs: build
 
     steps:
-      - name: Checkout
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Docker Build App
+      - name: "🐳 Build App Docker image"
         run: |
+          echo "══════════════════════════════════════════"
+          echo "  PHASE 5/6 · DOCKER BUILD & SCAN"
+          echo "══════════════════════════════════════════"
+
+          echo "── Building App image ──"
           docker build \
             --pull \
             -f docker/Dockerfile \
             -t app:ci-${{ github.sha }} \
             .
 
-      - name: Docker Build Worker
+      - name: "🐳 Build Worker Docker image"
         run: |
+          echo "── Building Worker image ──"
           docker build \
             --pull \
             -f docker/Dockerfile.worker \
             -t worker:ci-${{ github.sha }} \
             .
 
-      - name: Run Trivy Vulnerability Scanner (App)
+      - name: "🔍 Trivy scan — App image (CRITICAL, HIGH)"
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'app:ci-${{ github.sha }}'
@@ -492,7 +718,7 @@ jobs:
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
 
-      - name: Run Trivy Vulnerability Scanner (Worker)
+      - name: "🔍 Trivy scan — Worker image (CRITICAL, HIGH)"
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'worker:ci-${{ github.sha }}'
@@ -502,12 +728,30 @@ jobs:
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
 
+      - name: "📝 Write Phase 5 Summary"
+        if: always()
+        run: |
+          APP_SIZE=$(docker image inspect app:ci-${{ github.sha }} --format='{{.Size}}' 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "N/A")
+          WORKER_SIZE=$(docker image inspect worker:ci-${{ github.sha }} --format='{{.Size}}' 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "N/A")
 
-  # ============================================================
-  # 10. FINAL QUALITY GATE
-  # ============================================================
+          {
+            echo "## 🐳 Phase 5 · Docker Build & Scan"
+            echo ""
+            echo "| Image | Tag | Size | Trivy |"
+            echo "|-------|-----|------|-------|"
+            echo "| app | ci-${{ github.sha }} | ${APP_SIZE} | ${{ job.status == 'success' && '✅ Clean' || '⚠️ Check logs' }} |"
+            echo "| worker | ci-${{ github.sha }} | ${WORKER_SIZE} | ${{ job.status == 'success' && '✅ Clean' || '⚠️ Check logs' }} |"
+            echo ""
+            echo "Scan policy: **CRITICAL** and **HIGH** severity, unfixed only."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+
+  # ╔══════════════════════════════════════════════════════════════╗
+  # ║  PHASE 6 · QUALITY GATE (final aggregation)                 ║
+  # ║  Runs always — summarizes all previous phases                ║
+  # ╚══════════════════════════════════════════════════════════════╝
   quality-gate:
-    name: Quality Gate
+    name: "✅ Phase 6 · Quality Gate"
     runs-on: ubuntu-latest
 
     needs:
@@ -524,22 +768,48 @@ jobs:
     if: always()
 
     steps:
-      - name: Evaluate CI
+      - name: "📋 Evaluate all CI phases"
         run: |
-          echo "======================================"
-          echo "CI QUALITY GATE"
-          echo "======================================"
+          echo "╔══════════════════════════════════════════╗"
+          echo "║   PHASE 6 · QUALITY GATE — FINAL        ║"
+          echo "╠══════════════════════════════════════════╣"
+          echo "║  Phase 1  Format:        ${{ needs.format.result }}"
+          echo "║  Phase 2  Lint:          ${{ needs.lint.result }}"
+          echo "║  Phase 3a Unit Test:     ${{ needs.unit-test.result }}"
+          echo "║  Phase 3b Race Test:     ${{ needs.race-test.result }}"
+          echo "║  Phase 3c Integration:   ${{ needs.integration-test.result }}"
+          echo "║  Phase 3d Security:      ${{ needs.security.result }}"
+          echo "║  Phase 3e Benchmark:     ${{ needs.benchmark.result }}"
+          echo "║  Phase 4  Build:         ${{ needs.build.result }}"
+          echo "║  Phase 5  Docker:        ${{ needs.docker.result }}"
+          echo "╚══════════════════════════════════════════╝"
 
-          echo "Format:       ${{ needs.format.result }}"
-          echo "Lint:         ${{ needs.lint.result }}"
-          echo "Unit Test:    ${{ needs.unit-test.result }}"
-          echo "Race Test:    ${{ needs.race-test.result }}"
-          echo "Integration:  ${{ needs.integration-test.result }}"
-          echo "Benchmark:    ${{ needs.benchmark.result }}"
-          echo "Security:     ${{ needs.security.result }}"
-          echo "Build:        ${{ needs.build.result }}"
-          echo "Docker:       ${{ needs.docker.result }}"
-          echo "======================================"
+          # Helper: map result to emoji
+          icon() {
+            case "$1" in
+              success)  echo "✅";;
+              failure)  echo "❌";;
+              cancelled) echo "⏭️";;
+              skipped)  echo "⏭️";;
+              *)        echo "❓";;
+            esac
+          }
+
+          {
+            echo "## ✅ Quality Gate — CI Pipeline Summary"
+            echo ""
+            echo "| Phase | Job | Status |"
+            echo "|-------|-----|--------|"
+            echo "| 1 | 🔍 Format Check | $(icon ${{ needs.format.result }}) ${{ needs.format.result }} |"
+            echo "| 2 | 🛡️ Lint & Static Analysis | $(icon ${{ needs.lint.result }}) ${{ needs.lint.result }} |"
+            echo "| 3a | 🧪 Unit Tests | $(icon ${{ needs.unit-test.result }}) ${{ needs.unit-test.result }} |"
+            echo "| 3b | 🧪 Race Detector | $(icon ${{ needs.race-test.result }}) ${{ needs.race-test.result }} |"
+            echo "| 3c | 🧪 Integration Tests | $(icon ${{ needs.integration-test.result }}) ${{ needs.integration-test.result }} |"
+            echo "| 3d | 🔒 Security Scan | $(icon ${{ needs.security.result }}) ${{ needs.security.result }} |"
+            echo "| 3e | 📊 Benchmark | $(icon ${{ needs.benchmark.result }}) ${{ needs.benchmark.result }} |"
+            echo "| 4 | 🏗️ Build Application | $(icon ${{ needs.build.result }}) ${{ needs.build.result }} |"
+            echo "| 5 | 🐳 Docker Build & Scan | $(icon ${{ needs.docker.result }}) ${{ needs.docker.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "${{ needs.format.result }}" != "success" ||
                 "${{ needs.lint.result }}" != "success" ||
@@ -551,8 +821,14 @@ jobs:
                 "${{ needs.build.result }}" != "success" ||
                 "${{ needs.docker.result }}" != "success" ]]; then
 
-            echo "QUALITY GATE FAILED"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> ❌ **QUALITY GATE FAILED** — one or more phases did not pass." >> "$GITHUB_STEP_SUMMARY"
+
+            echo "❌ QUALITY GATE FAILED"
             exit 1
           fi
 
-          echo "QUALITY GATE PASSED"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> ✅ **QUALITY GATE PASSED** — all phases completed successfully." >> "$GITHUB_STEP_SUMMARY"
+
+          echo "✅ QUALITY GATE PASSED"

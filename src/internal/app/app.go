@@ -71,7 +71,7 @@ func New() (*App, error) {
 	}()
 
 	// ── 4. Auto-migration ────────────────────────────────────────────────────
-	if err = migrate.Run(cfg.Postgres.DatabaseURL(), cfg.App.MigrationsDir); err != nil {
+	if err = migrate.Run(cfg.Postgres.DatabaseURL()); err != nil {
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
@@ -141,20 +141,20 @@ func New() (*App, error) {
 		productMod *module.ProductModule
 	)
 
-	couponMod = module.NewCouponModule(mongoDB)
+	couponMod = module.NewCouponModule(mongoDB, redisClient)
 	productMod = module.NewProductModule(mongoDB, redisClient)
 
 	categoryMod, err := module.NewCategoryModule(mongoDB, redisClient)
 	if err != nil {
 		return nil, fmt.Errorf("create category module: %w", err)
 	}
-	brandMod, err := module.NewBrandModule(mongoDB)
+	brandMod, err := module.NewBrandModule(mongoDB, redisClient)
 	if err != nil {
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
 
 	orderMod := module.NewOrderModule(mongoDB, mongoClient, couponMod.ServiceInstance(), redisClient, productMod.CacheStore())
-	paymentMod := module.NewPaymentModule(orderMod.Service())
+	paymentMod := module.NewPaymentModule(cfg, orderMod.Service())
 	cartMod := module.NewCartModule(mongoDB, productMod.Repository(), couponMod.ServiceInstance())
 	shopMod := module.NewShopModule(mongoDB, redisClient)
 	userMod := module.NewUserModule(cfg, queries, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)

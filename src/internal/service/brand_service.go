@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"emc_lb/src/internal/repository"
+	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
 	"emc_lb/src/pkg/mapping"
@@ -26,10 +27,11 @@ type BrandService interface {
 
 type brandService struct {
 	brandRepository repository.BrandRepository
+	cacheStore      cache.BrandCacheStore
 }
 
-func NewBrandService(brandRepository repository.BrandRepository) BrandService {
-	return &brandService{brandRepository: brandRepository}
+func NewBrandService(brandRepository repository.BrandRepository, cacheStore cache.BrandCacheStore) BrandService {
+	return &brandService{brandRepository: brandRepository, cacheStore: cacheStore}
 }
 
 func (s *brandService) Create(ctx context.Context, req entities.CreateBrandRequest) (entities.BrandResponse, error) {
@@ -81,10 +83,20 @@ func (s *brandService) Create(ctx context.Context, req entities.CreateBrandReque
 		return entities.BrandResponse{}, res.WrapError(err, "Can not create brand now", erres.BrandCreateFailed)
 	}
 
+	if s.cacheStore != nil {
+		_ = s.cacheStore.InvalidateAll(ctx)
+	}
+
 	return mapping.ToBrandResponse(brand), nil
 }
 
 func (s *brandService) List(ctx context.Context) ([]entities.BrandResponse, error) {
+	if s.cacheStore != nil {
+		if cached, err := s.cacheStore.GetAll(ctx); err == nil {
+			return cached, nil
+		}
+	}
+
 	brands, err := s.brandRepository.List(ctx)
 	if err != nil {
 		return nil, res.WrapError(err, "Can not get brands now", erres.BrandGetFailed)
@@ -95,12 +107,22 @@ func (s *brandService) List(ctx context.Context) ([]entities.BrandResponse, erro
 		responses = append(responses, mapping.ToBrandResponse(brand))
 	}
 
+	if s.cacheStore != nil {
+		_ = s.cacheStore.SetAll(ctx, responses)
+	}
+
 	return responses, nil
 }
 
 func (s *brandService) GetByID(ctx context.Context, id string) (entities.BrandResponse, error) {
 	if len(id) != 24 {
 		return entities.BrandResponse{}, newBrandError("Brand id is invalid", erres.BrandValidationFailed, http.StatusBadRequest)
+	}
+
+	if s.cacheStore != nil {
+		if cached, err := s.cacheStore.GetByID(ctx, id); err == nil {
+			return cached, nil
+		}
 	}
 
 	brand, err := s.brandRepository.GetByID(ctx, id)
@@ -111,7 +133,13 @@ func (s *brandService) GetByID(ctx context.Context, id string) (entities.BrandRe
 		return entities.BrandResponse{}, res.WrapError(err, "Can not get brand now", erres.BrandGetFailed)
 	}
 
-	return mapping.ToBrandResponse(brand), nil
+	response := mapping.ToBrandResponse(brand)
+
+	if s.cacheStore != nil {
+		_ = s.cacheStore.SetByID(ctx, id, response)
+	}
+
+	return response, nil
 }
 
 //nolint:gocyclo
@@ -223,6 +251,11 @@ func (s *brandService) Update(ctx context.Context, id string, req entities.Updat
 		return entities.BrandResponse{}, res.WrapError(err, "Can not update brand now", erres.BrandUpdateFailed)
 	}
 
+	if s.cacheStore != nil {
+		_ = s.cacheStore.Invalidate(ctx, id)
+		_ = s.cacheStore.InvalidateAll(ctx)
+	}
+
 	return mapping.ToBrandResponse(brand), nil
 }
 
@@ -242,6 +275,11 @@ func (s *brandService) Delete(ctx context.Context, id string) error {
 			return newBrandError("Brand not found", erres.BrandNotFound, http.StatusNotFound)
 		}
 		return res.WrapError(err, "Can not delete brand now", erres.BrandDeleteFailed)
+	}
+
+	if s.cacheStore != nil {
+		_ = s.cacheStore.Invalidate(ctx, id)
+		_ = s.cacheStore.InvalidateAll(ctx)
 	}
 
 	return nil

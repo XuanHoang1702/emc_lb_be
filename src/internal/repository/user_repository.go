@@ -3,10 +3,11 @@ package repository
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"emc_lb/src/internal/db/sqlc"
 	"emc_lb/src/pkg/entities"
-
-	"github.com/google/uuid"
+	"emc_lb/src/pkg/mapping"
 )
 
 type UserRepository interface {
@@ -15,7 +16,7 @@ type UserRepository interface {
 	GetIDByID(context.Context, uuid.UUID) (uuid.UUID, error)
 	Create(context.Context, entities.User) (entities.User, error)
 	VerifyEmail(context.Context, string) error
-	SoftDeleteByEmail(context.Context, string) error
+	SoftDeleteByID(context.Context, uuid.UUID) error
 	UpdateAvatarByID(context.Context, uuid.UUID, string) error
 }
 
@@ -71,22 +72,15 @@ func (r *userRepository) Create(ctx context.Context, user entities.User) (entiti
 	if err != nil {
 		return entities.User{}, err
 	}
-
-	user.ID = row.ID
-	user.Email = row.Email
-	user.UserName = row.UserName
-	user.Phone = row.Phone
-	user.CreatedAt = row.CreatedAt
-
-	return user, nil
+	return mapping.ToUserEntityFromSqlc(row), nil
 }
 
 func (r *userRepository) VerifyEmail(ctx context.Context, email string) error {
 	return r.db.VerifyUserEmail(ctx, email)
 }
 
-func (r *userRepository) SoftDeleteByEmail(ctx context.Context, email string) error {
-	return r.db.SoftDeleteUserByEmail(ctx, email)
+func (r *userRepository) SoftDeleteByID(ctx context.Context, id uuid.UUID) error {
+	return r.db.SoftDeleteUserByID(ctx, id)
 }
 
 func (r *userRepository) UpdateAvatarByID(ctx context.Context, userID uuid.UUID, avatarURL string) error {

@@ -132,6 +132,21 @@ func (r *stubProductRepository) UpdateStock(_ context.Context, id string, stockD
 	return nil
 }
 
+func (r *stubProductRepository) DeductStock(_ context.Context, id string, quantity int64) error {
+	p, ok := r.products[id]
+	if !ok {
+		return errors.New("not found")
+	}
+	if p.Stock < quantity {
+		return errors.New("insufficient stock")
+	}
+	p.Stock -= quantity
+	p.SoldCount += quantity
+	r.products[id] = p
+	r.stockDeltas[id] -= quantity
+	return nil
+}
+
 // stubCouponSvc for testing
 type stubCouponSvc struct {
 	validateFn func(code string, amount float64) (entities.Coupon, error)
@@ -162,6 +177,13 @@ func (s *stubCouponSvc) ValidateCouponForAmount(_ context.Context, code string, 
 
 func (s *stubCouponSvc) IncrementUsage(_ context.Context, _ string, _ int64) error {
 	return nil
+}
+
+func (s *stubCouponSvc) ValidateAndIncrementUsage(_ context.Context, code string, amount float64) (entities.Coupon, error) {
+	if s.validateFn != nil {
+		return s.validateFn(code, amount)
+	}
+	return entities.Coupon{}, errors.New("no coupon")
 }
 
 // stubProductCache for testing

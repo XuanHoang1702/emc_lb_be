@@ -1,5 +1,3 @@
-version: '3.9'
-
 x-logging: &default-logging
   driver: "json-file"
   options:
@@ -8,13 +6,11 @@ x-logging: &default-logging
 
 services:
   postgres:
+    container_name: emc_lb_postgres
     image: postgres:15
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     command: postgres -c timezone=Asia/Ho_Chi_Minh
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
       TZ: Asia/Ho_Chi_Minh
       PGTZ: Asia/Ho_Chi_Minh
     ports:
@@ -25,7 +21,7 @@ services:
       - emc-network
     logging: *default-logging
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,11 +33,23 @@ services:
           memory: 512M
 
   mongo:
+    container_name: emc_lb_mongo
     image: mongo:7
-    env_file: ../.env.development
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    env_file: ${ECC_ENV_FILE:-../.env.development}
+    # Auth + replica set requires a keyfile. Generate one at boot with correct
+    # ownership before handing off to the official entrypoint.
+    # We place it in /tmp instead of /data/db because if /data/db is not empty,
+    # the MongoDB image initialization (creating root user) will be skipped.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        if [ ! -f /tmp/rs-keyfile ]; then
+          openssl rand -base64 756 > /tmp/rs-keyfile
+          chmod 400 /tmp/rs-keyfile
+          chown mongodb:mongodb /tmp/rs-keyfile
+        fi
+        exec /usr/local/bin/docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /tmp/rs-keyfile
     ports:
       - "127.0.0.1:27018:27017"
     volumes:
@@ -49,11 +57,19 @@ services:
     networks:
       - emc-network
     logging: *default-logging
+    # Single-node replica set: required for the multi-document transactions
+    # used in order creation. The healthcheck initializes the replica set on
+    # first boot and then reports healthy once a primary has been elected.
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      test:
+        - "CMD-SHELL"
+        - |
+          mongosh --quiet --eval "try { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}) } catch(e) {}"
+          mongosh --quiet --eval "try { if (rs.isMaster().ismaster) { db.getSiblingDB('admin').createUser({user: '$${MONGO_INITDB_ROOT_USERNAME}', pwd: '$${MONGO_INITDB_ROOT_PASSWORD}', roles: [{role: 'root', db: 'admin'}]}) } } catch(e) {}"
+          mongosh --quiet --username $${MONGO_INITDB_ROOT_USERNAME} --password $${MONGO_INITDB_ROOT_PASSWORD} --authenticationDatabase admin --eval "try { rs.status().ok } catch (e) {}" | grep -q 1
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
       start_period: 30s
     deploy:
       resources:
@@ -62,9 +78,10 @@ services:
           memory: 512M
 
   redis:
+    container_name: emc_lb_redis
     image: redis:7
-    command: redis-server --requirepass ${REDIS_PASSWORD}
-    env_file: ../.env.development
+    command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\""]
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     ports:
       - "127.0.0.1:6380:6379"
     volumes:
@@ -73,7 +90,7 @@ services:
       - emc-network
     logging: *default-logging
     healthcheck:
-      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
+      test: [ "CMD", "redis-cli", "-a", "$${REDIS_PASSWORD}", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -85,10 +102,11 @@ services:
           memory: 256M
 
   localstack:
+    container_name: emc_lb_localstack
     image: localstack/localstack:3.4.0
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
-      - AWS_DEFAULT_REGION=${AWS_REGION}
+      - AWS_DEFAULT_REGION=$${AWS_REGION}
     ports:
       - "127.0.0.1:4566:4566"
     volumes:
@@ -109,19 +127,22 @@ services:
           memory: 512M
 
   emc_api_node_1:
+    container_name: emc_lb_api_node_1
+    image: ${ECC_API_IMAGE:-emc_lb_api}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile
     restart: always
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
       APP_PORT: 8080
       GIN_MODE: release
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       LOCALSTACK_ENDPOINT: http://localstack:4566
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-17022004Hoang}@postgres:5432/${POSTGRES_DB:-emc_lb}?sslmode=disable
+      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo}:${MONGO_INITDB_ROOT_PASSWORD:-mongo}@mongo:27017/?authSource=admin
     depends_on:
       postgres:
         condition: service_healthy
@@ -139,19 +160,22 @@ services:
           memory: 256M
 
   emc_api_node_2:
+    container_name: emc_lb_api_node_2
+    image: ${ECC_API_IMAGE:-emc_lb_api}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile
     restart: always
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
       APP_PORT: 8080
       GIN_MODE: release
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       LOCALSTACK_ENDPOINT: http://localstack:4566
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-17022004Hoang}@postgres:5432/${POSTGRES_DB:-emc_lb}?sslmode=disable
+      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo}:${MONGO_INITDB_ROOT_PASSWORD:-mongo}@mongo:27017/?authSource=admin
     depends_on:
       postgres:
         condition: service_healthy
@@ -169,19 +193,22 @@ services:
           memory: 256M
 
   emc_api_node_3:
+    container_name: emc_lb_api_node_3
+    image: ${ECC_API_IMAGE:-emc_lb_api}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile
     restart: always
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
       APP_PORT: 8080
       GIN_MODE: release
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       LOCALSTACK_ENDPOINT: http://localstack:4566
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-17022004Hoang}@postgres:5432/${POSTGRES_DB:-emc_lb}?sslmode=disable
+      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo}:${MONGO_INITDB_ROOT_PASSWORD:-mongo}@mongo:27017/?authSource=admin
     depends_on:
       postgres:
         condition: service_healthy
@@ -199,17 +226,20 @@ services:
           memory: 256M
 
   emc_worker:
+    container_name: emc_lb_worker
+    image: ${ECC_WORKER_IMAGE:-emc_lb_worker}:${ECC_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile.worker
     restart: always
-    env_file: ../.env.development
+    env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       LOCALSTACK_ENDPOINT: http://localstack:4566
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-17022004Hoang}@postgres:5432/${POSTGRES_DB:-emc_lb}?sslmode=disable
+      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo}:${MONGO_INITDB_ROOT_PASSWORD:-mongo}@mongo:27017/?authSource=admin
     depends_on:
       postgres:
         condition: service_healthy
@@ -227,6 +257,7 @@ services:
           memory: 256M
 
   nginx:
+    container_name: emc_lb_nginx
     image: nginx:alpine
     ports:
       - "80:80"

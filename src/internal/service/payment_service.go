@@ -6,20 +6,21 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
+	"time"
 
-	appconfig "emc_lb/src/pkg/config"
+	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
+	"emc_lb/src/pkg/logs"
 	"emc_lb/src/pkg/res"
 	"emc_lb/src/pkg/utils"
 )
 
 type PaymentService interface {
 	InitCheckout(ctx context.Context, req entities.CheckoutInitRequest) (*entities.CheckoutInitResponse, error)
-	ProcessIPN(ctx context.Context, req entities.SePayIPNRequest) error
+	ProcessIPN(ctx context.Context, req entities.SePayIPNRequest, secretHeader string) error
 }
 
 type paymentService struct {
@@ -32,30 +33,14 @@ type paymentService struct {
 	orderService OrderService
 }
 
-func NewPaymentService(orderService OrderService) PaymentService {
-	env := utils.GetEnv("SEPAY_ENV", "sandbox")
-	merchantID := utils.GetEnv("CLIENT_KEY", "")
-	secretKey := utils.GetEnv("SECRET_KEY", "")
-	successURL := utils.GetEnv("SEPAY_SUCCESS_URL", "")
-	errorURL := utils.GetEnv("SEPAY_ERROR_URL", "")
-	cancelURL := utils.GetEnv("SEPAY_CANCEL_URL", "")
-
-	if cfg, err := appconfig.Load(); err == nil {
-		env = cfg.Payment.SepayEnv
-		merchantID = cfg.Payment.SepayMerchantID
-		secretKey = cfg.Payment.SepaySecretKey
-		successURL = cfg.Payment.SepaySuccessURL
-		errorURL = cfg.Payment.SepayErrorURL
-		cancelURL = cfg.Payment.SepayCancelURL
-	}
-
+func NewPaymentService(cfg *config.AppConfig, orderService OrderService) PaymentService {
 	return &paymentService{
-		merchantID:   merchantID,
-		secretKey:    secretKey,
-		env:          env,
-		successURL:   successURL,
-		errorURL:     errorURL,
-		cancelURL:    cancelURL,
+		merchantID:   cfg.Payment.SepayMerchantID,
+		secretKey:    cfg.Payment.SepaySecretKey,
+		env:          cfg.Payment.SepayEnv,
+		successURL:   cfg.Payment.SepaySuccessURL,
+		errorURL:     cfg.Payment.SepayErrorURL,
+		cancelURL:    cfg.Payment.SepayCancelURL,
 		orderService: orderService,
 	}
 }
@@ -81,7 +66,7 @@ func (s *paymentService) InitCheckout(ctx context.Context, req entities.Checkout
 		return nil, err
 	}
 
-	if order.TotalAmount != req.OrderAmount {
+	if !utils.MoneyEqual(order.TotalAmount, req.OrderAmount) {
 		return nil, &res.AppError{
 			Message:    "Order amount mismatch",
 			Code:       erres.CommonBadRequest,
@@ -167,14 +152,42 @@ func (s *paymentService) InitCheckout(ctx context.Context, req entities.Checkout
 	}, nil
 }
 
-func (s *paymentService) ProcessIPN(ctx context.Context, req entities.SePayIPNRequest) error {
+func (s *paymentService) ProcessIPN(ctx context.Context, req entities.SePayIPNRequest, secretHeader string) error {
+	// The gateway must be configured before any IPN is accepted.
+	if s.secretKey == "" {
+		return &res.AppError{
+			Message:    "Payment gateway not configured",
+			Code:       erres.CommonInternal,
+			StatusCode: http.StatusInternalServerError,
+		}
+	}
+
+	// Authenticate the IPN with the X-Secret-Key header (constant-time compare).
+	if !hmac.Equal([]byte(secretHeader), []byte(s.secretKey)) {
+		return &res.AppError{
+			Message:    "Invalid IPN secret key",
+			Code:       erres.CommonUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		}
+	}
+
+	// Replay protection: reject notifications older than 5 minutes (SePay
+	// recommends this window). Requests without a timestamp are rejected too.
+	if req.Timestamp == 0 || time.Since(time.Unix(req.Timestamp, 0)).Abs() > 5*time.Minute {
+		return &res.AppError{
+			Message:    "IPN timestamp expired",
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
 	if req.NotificationType != "ORDER_PAID" {
-		log.Printf("Ignoring SePay IPN with type: %s", req.NotificationType)
+		logs.WithContext(ctx).Info("ignoring SePay IPN with type", "type", req.NotificationType)
 		return nil
 	}
 
 	if req.Order.OrderStatus != "CAPTURED" {
-		log.Printf("Ignoring SePay IPN with order status: %s", req.Order.OrderStatus)
+		logs.WithContext(ctx).Info("ignoring SePay IPN with order status", "status", req.Order.OrderStatus)
 		return nil
 	}
 
@@ -188,13 +201,22 @@ func (s *paymentService) ProcessIPN(ctx context.Context, req entities.SePayIPNRe
 	}
 
 	var paidAmount float64
-	_, _ = fmt.Sscanf(req.Order.OrderAmount, "%f", &paidAmount)
+	if _, err := fmt.Sscanf(req.Order.OrderAmount, "%f", &paidAmount); err != nil {
+		return &res.AppError{
+			Message:    "Invalid order_amount in IPN",
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
 
-	log.Printf("SePay IPN: ORDER_PAID invoice=%s amount=%s method=%s",
-		invoiceNumber, req.Order.OrderAmount, req.Transaction.PaymentMethod)
+	logs.WithContext(ctx).Info("SePay IPN: ORDER_PAID",
+		"invoice", invoiceNumber,
+		"amount", req.Order.OrderAmount,
+		"method", req.Transaction.PaymentMethod)
 
 	if err := s.orderService.MarkAsPaidByInvoice(ctx, invoiceNumber, paidAmount); err != nil {
-		log.Printf("Failed to mark order as paid: %v", err)
+		logs.WithContext(ctx).Error("failed to mark order as paid",
+			"invoice", invoiceNumber, "error", err)
 		return err
 	}
 

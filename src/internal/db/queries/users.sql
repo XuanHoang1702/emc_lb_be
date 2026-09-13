@@ -58,13 +58,13 @@ SET
     updated_at = NOW()
 WHERE email = $1;
 
--- name: SoftDeleteUserByEmail :exec
+-- name: SoftDeleteUserByID :exec
 UPDATE users
 SET
     is_deleted = true,
     deleted_at = NOW(),
     updated_at = NOW()
-WHERE email = $1 AND is_deleted = false;
+WHERE id = $1 AND is_deleted = false;
 
 -- name: UpdateUserAvatarByEmail :exec
 UPDATE users

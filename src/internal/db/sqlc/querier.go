@@ -19,7 +19,7 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error)
 	GetUserIDByID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
-	SoftDeleteUserByEmail(ctx context.Context, email string) error
+	SoftDeleteUserByID(ctx context.Context, id uuid.UUID) error
 	UpdateUserAvatarByEmail(ctx context.Context, arg UpdateUserAvatarByEmailParams) error
 	UpdateUserAvatarByID(ctx context.Context, arg UpdateUserAvatarByIDParams) error
 	VerifyUserEmail(ctx context.Context, email string) error

@@ -29,7 +29,7 @@ type UserService interface {
 	RefreshToken(context.Context, entities.RefreshTokenRequest) (entities.LoginUserResponse, error)
 	Logout(context.Context, entities.LogoutUserRequest) error
 	VerifyEmailOTP(context.Context, entities.VerifyEmailOTPRequest) error
-	Delete(context.Context, entities.DeleteUserRequest) error
+	Delete(context.Context, uuid.UUID) error
 	UpsertAvatar(context.Context, entities.UpsertAvatarRequest) (entities.UpsertAvatarResponse, error)
 }
 
@@ -70,9 +70,9 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 			StatusCode: http.StatusConflict,
 		}
 	}
-	// if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-	// 	return entities.RegisterUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
-	// }
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return entities.RegisterUserResponse{}, res.WrapError(err, "Cannot check email availability", erres.CommonInternal)
+	}
 
 	passwordHash, err := utils.HashPassword(normalizedRequest.Password, s.cfg.App.SystemSecret)
 	if err != nil {
@@ -273,11 +273,8 @@ func (s *userService) VerifyEmailOTP(ctx context.Context, req entities.VerifyEma
 	return nil
 }
 
-func (s *userService) Delete(ctx context.Context, req entities.DeleteUserRequest) error {
-	normalizedRequest := req
-	utils.NormalizeEmail(&normalizedRequest.Email)
-
-	if _, err := s.userRepository.GetByEmail(ctx, normalizedRequest.Email); err != nil {
+func (s *userService) Delete(ctx context.Context, userID uuid.UUID) error {
+	if _, err := s.userRepository.GetByID(ctx, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return &res.AppError{
 				Message:    "User not found",
@@ -289,7 +286,7 @@ func (s *userService) Delete(ctx context.Context, req entities.DeleteUserRequest
 		return res.WrapError(err, "Can not get account now", erres.UserGetFailed)
 	}
 
-	if err := s.userRepository.SoftDeleteByEmail(ctx, normalizedRequest.Email); err != nil {
+	if err := s.userRepository.SoftDeleteByID(ctx, userID); err != nil {
 		return res.WrapError(err, "Can not delete account now", erres.UserUpdateFailed)
 	}
 

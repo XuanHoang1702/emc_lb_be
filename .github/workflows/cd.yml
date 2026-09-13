@@ -1,0 +1,175 @@
+name: "🚀 CD · Build, Push & Deploy"
+
+on:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to deploy (default: git sha)"
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: cd-${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.25.13"
+
+jobs:
+
+  # ╔══════════════════════════════════════════════════════════════╗
+  # ║  STAGE 1 · BUILD & PUSH TO GHCR                             ║
+  # ╚══════════════════════════════════════════════════════════════╝
+  build-and-push:
+    name: "📦 Stage 1 · Build & Push to GHCR"
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "🏷️ Determine image tag"
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_SHA::12}"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "══════════════════════════════════════════"
+          echo "  STAGE 1 · BUILD & PUSH"
+          echo "  Image tag: $TAG"
+          echo "══════════════════════════════════════════"
+
+      - name: "⚙️ Set up QEMU (multi-arch)"
+        uses: docker/setup-qemu-action@v3
+
+      - name: "⚙️ Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+
+      - name: "🔑 Login to GitHub Container Registry"
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "🐳 Build & push API image"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-api:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository }}-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: "🐳 Build & push Worker image"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.worker
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-worker:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository }}-worker:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: "📝 Write Stage 1 Summary"
+        if: always()
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          {
+            echo "## 📦 Stage 1 · Build & Push to GHCR"
+            echo ""
+            echo "| Image | Tag | Registry |"
+            echo "|-------|-----|----------|"
+            echo "| API | \`${TAG}\` + \`latest\` | \`ghcr.io/${{ github.repository }}-api\` |"
+            echo "| Worker | \`${TAG}\` + \`latest\` | \`ghcr.io/${{ github.repository }}-worker\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+
+  # ╔══════════════════════════════════════════════════════════════╗
+  # ║  STAGE 2 · DEPLOY TO PRODUCTION                             ║
+  # ║  Environment: production (requires approval if configured)   ║
+  # ╚══════════════════════════════════════════════════════════════╝
+  deploy:
+    name: "🚀 Stage 2 · Deploy to Production"
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "🚀 Deploy via SSH (rolling + smoke + rollback)"
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_SERVER: ghcr.io/${{ github.repository }}-api
+          IMAGE_WORKER: ghcr.io/${{ github.repository }}-worker
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.tag }}
+          PREVIOUS_TAG: latest
+          COMPOSE_DIR: ${{ vars.DEPLOY_COMPOSE_DIR || '/opt/emc_lb' }}
+          ECC_ENV_FILE_ABS: ${{ vars.DEPLOY_ENV_FILE || '.env.production' }}
+          ECC_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE_REL || '../.env.production' }}
+        run: |
+          echo "══════════════════════════════════════════"
+          echo "  STAGE 2 · DEPLOY TO PRODUCTION"
+          echo "  Tag:  $IMAGE_TAG"
+          echo "  Host: $DEPLOY_HOST"
+          echo "══════════════════════════════════════════"
+
+          # Upload deploy artifacts to server and execute
+          echo "$DEPLOY_SSH_KEY" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /tmp/deploy_key"
+
+          echo "── Step 1/3: Creating remote directory ──"
+          ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $COMPOSE_DIR/docker/nginx"
+
+          echo "── Step 2/3: Uploading compose + nginx + deploy script ──"
+          scp $SSH_OPTS docker/docker-compose.yml "$DEPLOY_USER@$DEPLOY_HOST:$COMPOSE_DIR/docker/docker-compose.yml"
+          scp $SSH_OPTS docker/nginx/nginx.conf "$DEPLOY_USER@$DEPLOY_HOST:$COMPOSE_DIR/docker/nginx/nginx.conf"
+          scp $SSH_OPTS deploy/deploy.sh "$DEPLOY_USER@$DEPLOY_HOST:$COMPOSE_DIR/deploy.sh"
+
+          echo "── Step 3/3: Executing deploy script ──"
+          REMOTE_ENV="IMAGE_SERVER='$IMAGE_SERVER' IMAGE_WORKER='$IMAGE_WORKER' IMAGE_TAG='$IMAGE_TAG' PREVIOUS_TAG='$PREVIOUS_TAG' COMPOSE_DIR='$COMPOSE_DIR' ECC_ENV_FILE_ABS='$ECC_ENV_FILE_ABS' ECC_ENV_FILE='$ECC_ENV_FILE' GHCR_USERNAME='$GHCR_USERNAME' GHCR_TOKEN='$GHCR_TOKEN'"
+          ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "cd $COMPOSE_DIR && $REMOTE_ENV bash deploy.sh"
+
+      - name: "📝 Write Stage 2 Summary"
+        if: always()
+        run: |
+          TAG="${{ needs.build-and-push.outputs.tag }}"
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            ICON="✅"; MSG="Deployment completed successfully."
+          else
+            ICON="❌"; MSG="Deployment failed — check logs for details."
+          fi
+
+          {
+            echo "## 🚀 Stage 2 · Deploy to Production"
+            echo ""
+            echo "| Detail | Value |"
+            echo "|--------|-------|"
+            echo "| Image Tag | \`${TAG}\` |"
+            echo "| Environment | production |"
+            echo "| Status | ${ICON} ${MSG} |"
+            echo ""
+            echo "Deploy method: SSH → rolling update with smoke test + auto-rollback."
+          } >> "$GITHUB_STEP_SUMMARY"

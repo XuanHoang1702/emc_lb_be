@@ -52,13 +52,16 @@ func (h *PaymentHandler) HandleInitCheckout(ctx *gin.Context) {
 
 // HandleSepayIPN godoc
 // @Summary      SePay IPN Webhook
-// @Description  Receives Instant Payment Notification from SePay when payment status changes
+// @Description  Receives Instant Payment Notification from SePay when payment status changes.
+// @Description  Authenticated via the X-Secret-Key header (merchant SECRET_KEY).
 // @Tags         Payments
 // @Accept       json
 // @Produce      json
+// @Param        X-Secret-Key header string true "SePay merchant secret key"
 // @Param        body body entities.SePayIPNRequest true "IPN payload from SePay"
 // @Success      200  {object}  res.APIResponse
 // @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
 // @Router       /api/v1/payment/ipn [post]
 func (h *PaymentHandler) HandleSepayIPN(ctx *gin.Context) {
 	var req entities.SePayIPNRequest
@@ -71,7 +74,8 @@ func (h *PaymentHandler) HandleSepayIPN(ctx *gin.Context) {
 		return
 	}
 
-	if err := h.paymentService.ProcessIPN(ctx.Request.Context(), req); err != nil {
+	secretHeader := ctx.GetHeader("X-Secret-Key")
+	if err := h.paymentService.ProcessIPN(ctx.Request.Context(), req, secretHeader); err != nil {
 		res.Error(ctx, err)
 		return
 	}

@@ -1,9 +1,10 @@
 package mapping
 
 import (
-	"emc_lb/src/pkg/entities"
-
 	"github.com/google/uuid"
+
+	"emc_lb/src/internal/db/sqlc"
+	"emc_lb/src/pkg/entities"
 )
 
 func ToUserEntity(request entities.RegisterUserRequest, passwordHash string) entities.User {
@@ -42,4 +43,14 @@ func ToRegisterUserResponse(user entities.User) entities.RegisterUserResponse {
 	}
 
 	return response
+}
+
+func ToUserEntityFromSqlc(row sqlc.CreateUserRow) entities.User {
+	return entities.User{
+		ID:        row.ID,
+		Email:     row.Email,
+		UserName:  row.UserName,
+		Phone:     row.Phone,
+		CreatedAt: row.CreatedAt,
+	}
 }
