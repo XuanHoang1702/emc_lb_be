@@ -1,0 +1,13 @@
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks#configuration
+
+title = "gitleaks config"
+
+[allowlist]
+  description = "Allowlisted false positives"
+
+  # SonarCloud project key is a public project identifier, not a secret.
+  # Commit 46a5a8ab added .sonarlint/connectedMode.json with projectKey.
+  commits = [
+    "46a5a8ab6ff68755f4668a33b474f60abee99dc9"
+  ]
