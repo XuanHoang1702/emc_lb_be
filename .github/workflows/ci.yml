@@ -135,7 +135,7 @@ jobs:
         id: vulncheck
         run: |
           echo "── Running govulncheck ──"
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
           govulncheck ./...
           echo "status=pass" >> "$GITHUB_OUTPUT"
 
@@ -467,7 +467,7 @@ jobs:
           echo "  Tool 1/2: govulncheck"
           echo "══════════════════════════════════════════"
 
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
           govulncheck ./...
 
       - name: "🔍 Run Gosec"
