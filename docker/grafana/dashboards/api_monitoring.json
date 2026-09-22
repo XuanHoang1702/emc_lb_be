@@ -139,6 +139,40 @@
         "displayMode": "gradient",
         "orientation": "horizontal"
       }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU Usage (API Nodes)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "docker_container_cpu_usage_percent{container_name=~\"emc_lb_api_node.*\"}",
+          "legendFormat": "{{container_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2 },
+          "unit": "cores"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory Usage (API Nodes)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "expr": "docker_container_mem_usage{container_name=~\"emc_lb_api_node.*\"}",
+          "legendFormat": "{{container_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 },
+          "unit": "bytes"
+        }
+      }
     }
   ]
 }

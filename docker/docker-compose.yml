@@ -80,7 +80,7 @@ services:
   redis:
     container_name: emc_lb_redis
     image: redis:7
-    command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\""]
+    command: [ "sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\"" ]
     env_file: ${ECC_ENV_FILE:-../.env.development}
     ports:
       - "127.0.0.1:6380:6379"
@@ -303,7 +303,27 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 512M
+          memory: 1G
+
+  telegraf:
+    container_name: emc_lb_telegraf
+    image: telegraf:latest
+    user: "root"
+    privileged: true
+    entrypoint: ["telegraf"]
+    ports:
+      - "9273:9273"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    networks:
+      - emc-network
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
 
 volumes:
   pgdata:

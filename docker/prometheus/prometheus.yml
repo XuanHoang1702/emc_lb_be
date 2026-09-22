@@ -9,3 +9,7 @@ scrape_configs:
         - 'emc_api_node_1:8080'
         - 'emc_api_node_2:8080'
         - 'emc_api_node_3:8080'
+
+  - job_name: 'telegraf'
+    static_configs:
+      - targets: ['telegraf:9273']
