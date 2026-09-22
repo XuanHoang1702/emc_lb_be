@@ -325,6 +325,63 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  postgres_exporter:
+    container_name: emc_lb_postgres_exporter
+    image: prometheuscommunity/postgres-exporter:latest
+    env_file: ${ECC_ENV_FILE:-../.env.development}
+    environment:
+      DATA_SOURCE_NAME: postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@postgres:5432/$${POSTGRES_DB}?sslmode=disable
+    networks:
+      - emc-network
+    logging: *default-logging
+    depends_on:
+      - postgres
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+
+  redis_exporter:
+    container_name: emc_lb_redis_exporter
+    image: oliver006/redis_exporter:latest
+    env_file: ${ECC_ENV_FILE:-../.env.development}
+    command:
+      - '-redis.addr=redis://redis:6379'
+      - '-redis.password=$${REDIS_PASSWORD}'
+      - '-check-keys=asynq:*:pending,asynq:*:active,asynq:*:retry,asynq:*:archived,asynq:*:completed'
+    networks:
+      - emc-network
+    logging: *default-logging
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+
+  node_exporter:
+    container_name: emc_lb_node_exporter
+    image: prom/node-exporter:latest
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - emc-network
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+
 volumes:
   pgdata:
   mongodata:
