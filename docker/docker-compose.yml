@@ -141,8 +141,6 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOCALSTACK_ENDPOINT: http://localstack:4566
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-17022004Hoang}@postgres:5432/${POSTGRES_DB:-emc_lb}?sslmode=disable
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo}:${MONGO_INITDB_ROOT_PASSWORD:-mongo}@mongo:27017/?authSource=admin
     depends_on:
       postgres:
         condition: service_healthy
@@ -174,8 +172,6 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOCALSTACK_ENDPOINT: http://localstack:4566
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-17022004Hoang}@postgres:5432/${POSTGRES_DB:-emc_lb}?sslmode=disable
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo}:${MONGO_INITDB_ROOT_PASSWORD:-mongo}@mongo:27017/?authSource=admin
     depends_on:
       postgres:
         condition: service_healthy
@@ -207,8 +203,6 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOCALSTACK_ENDPOINT: http://localstack:4566
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-17022004Hoang}@postgres:5432/${POSTGRES_DB:-emc_lb}?sslmode=disable
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo}:${MONGO_INITDB_ROOT_PASSWORD:-mongo}@mongo:27017/?authSource=admin
     depends_on:
       postgres:
         condition: service_healthy
@@ -238,8 +232,6 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOCALSTACK_ENDPOINT: http://localstack:4566
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-17022004Hoang}@postgres:5432/${POSTGRES_DB:-emc_lb}?sslmode=disable
-      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo}:${MONGO_INITDB_ROOT_PASSWORD:-mongo}@mongo:27017/?authSource=admin
     depends_on:
       postgres:
         condition: service_healthy

@@ -63,7 +63,7 @@ type User struct {
 
 type RegisterUserRequest struct {
 	Email    string `json:"email" binding:"required,email,max=254"`
-	Password string `json:"password" binding:"required,min=8,max=12"`
+	Password string `json:"password" binding:"required,min=8,password_strong"`
 	UserName string `json:"user_name" binding:"required,min=3,max=254,regex=^[a-zA-Z0-9_]*$"`
 	Phone    string `json:"phone" binding:"omitempty,min=10,max=15"`
 }

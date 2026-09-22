@@ -108,7 +108,7 @@ func New() (*App, error) {
 	auth.InitRBACManager(queries)
 	refreshTokenStore := cache.NewRedisRefreshTokenStore(redisClient)
 	emailOTPStore := cache.NewRedisEmailOTPStore(redisClient)
-	mailer := mail.NewSMTPMailer()
+	mailer := mail.NewMailer()
 	mongoDB := mongoClient.Database(cfg.MongoDB.Database)
 
 	redisOpt := asynq.RedisClientOpt{

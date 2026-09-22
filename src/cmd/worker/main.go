@@ -37,7 +37,7 @@ func main() {
 
 	_ = sqlc.New(logs.WrapDBTX(pgPool))
 
-	mailer := mail.NewSMTPMailer()
+	mailer := mail.NewMailer()
 
 	redisOpt := asynq.RedisClientOpt{
 		Addr:     cfg.Redis.Host + ":" + cfg.Redis.Port,

@@ -1,22 +1,56 @@
 package route
 
 import (
+	"time"
+
 	"emc_lb/src/internal/handler"
+	"emc_lb/src/internal/middleware"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 type UserRoute struct {
 	userHandler *handler.UserHandler
+	redisClient *redis.Client
 }
 
 func NewUserRoute(userHandler *handler.UserHandler) *UserRoute {
 	return &UserRoute{userHandler: userHandler}
 }
 
+func (r *UserRoute) SetRedisClient(client *redis.Client) {
+	r.redisClient = client
+}
+
 func (r *UserRoute) RegisterPublic(router gin.IRouter) {
 	userRoute := router.Group("/user")
-	{
+
+	// Apply strict auth rate limiting for sensitive endpoints:
+	// - Login/Register: 10 requests per minute per IP (prevents brute-force)
+	// - OTP verification: 5 requests per minute per IP (prevents OTP guessing)
+	// - Refresh token: 20 requests per minute per IP
+	if r.redisClient != nil {
+		loginGroup := userRoute.Group("")
+		loginGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 10, time.Minute))
+		{
+			loginGroup.POST("/register", r.userHandler.HandleRegister)
+			loginGroup.POST("/login", r.userHandler.HandleLogin)
+		}
+
+		otpGroup := userRoute.Group("")
+		otpGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 5, time.Minute))
+		{
+			otpGroup.POST("/verify-email-otp", r.userHandler.HandleVerifyEmailOTP)
+		}
+
+		refreshGroup := userRoute.Group("")
+		refreshGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 20, time.Minute))
+		{
+			refreshGroup.POST("/refresh-token", r.userHandler.HandleRefreshToken)
+		}
+	} else {
+		// Fallback: no auth rate limiting if Redis is not available
 		userRoute.POST("/register", r.userHandler.HandleRegister)
 		userRoute.POST("/verify-email-otp", r.userHandler.HandleVerifyEmailOTP)
 		userRoute.POST("/login", r.userHandler.HandleLogin)

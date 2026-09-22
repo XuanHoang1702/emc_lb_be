@@ -1,29 +1,45 @@
 package route
 
 import (
+	"time"
+
 	"emc_lb/src/internal/handler"
+	"emc_lb/src/internal/middleware"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 type PaymentRoute struct {
 	paymentHandler *handler.PaymentHandler
+	redisClient    *redis.Client
 }
 
 func NewPaymentRoute(paymentHandler *handler.PaymentHandler) *PaymentRoute {
 	return &PaymentRoute{paymentHandler: paymentHandler}
 }
 
+func (r *PaymentRoute) SetRedisClient(client *redis.Client) {
+	r.redisClient = client
+}
+
 func (r *PaymentRoute) RegisterPublic(router gin.IRouter) {
 	paymentGroup := router.Group("/payment")
-	{
-		// IPN endpoint for SePay Payment Gateway.
-		// Authenticated via the X-Secret-Key header, verified in ProcessIPN.
-		paymentGroup.POST("/ipn", r.paymentHandler.HandleSepayIPN)
 
-		// Test endpoint: Generates a clickable link/redirect for testing the payment gateway in browser
-		paymentGroup.GET("/test-checkout", r.paymentHandler.HandleTestCheckoutLink)
+	if r.redisClient != nil {
+		// IPN endpoint: strict rate limit (30 requests per minute per IP)
+		// SePay should not send more than this under normal conditions.
+		ipnGroup := paymentGroup.Group("")
+		ipnGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 30, time.Minute))
+		{
+			ipnGroup.POST("/ipn", r.paymentHandler.HandleSepayIPN)
+		}
+	} else {
+		paymentGroup.POST("/ipn", r.paymentHandler.HandleSepayIPN)
 	}
+
+	// Test endpoint: Generates a clickable link/redirect for testing the payment gateway in browser
+	paymentGroup.GET("/test-checkout", r.paymentHandler.HandleTestCheckoutLink)
 }
 
 func (r *PaymentRoute) RegisterProtected(router gin.IRouter) {

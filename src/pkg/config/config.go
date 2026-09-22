@@ -77,13 +77,16 @@ type AWSSettings struct {
 }
 
 type MailSettings struct {
-	Host      string
-	Port      int
-	Username  string
-	Password  string
-	FromEmail string
-	FromName  string
-	OTPTTl    time.Duration
+	Provider     string // "smtp" | "resend"
+	Host         string
+	Port         int
+	Username     string
+	Password     string
+	FromEmail    string
+	FromName     string
+	ResendAPIKey string
+	ResendFrom   string
+	OTPTTl       time.Duration
 }
 
 type PaymentSettings struct {
@@ -168,13 +171,16 @@ func load() (*AppConfig, error) {
 			AvatarBucket:    getEnv("S3_AVATAR_BUCKET", "emc-lb-avatars"),
 		},
 		Mail: MailSettings{
-			Host:      getEnv("SMTP_HOST", ""),
-			Port:      getEnvInt("SMTP_PORT", 587),
-			Username:  getEnv("SMTP_USERNAME", ""),
-			Password:  getEnv("SMTP_PASSWORD", ""),
-			FromEmail: getEnv("SMTP_FROM_EMAIL", ""),
-			FromName:  getEnv("SMTP_FROM_NAME", "EMC LB"),
-			OTPTTl:    getEnvDuration("EMAIL_OTP_TTL", 10*time.Minute),
+			Provider:     getEnv("MAIL_PROVIDER", "smtp"),
+			Host:         getEnv("SMTP_HOST", ""),
+			Port:         getEnvInt("SMTP_PORT", 587),
+			Username:     getEnv("SMTP_USERNAME", ""),
+			Password:     getEnv("SMTP_PASSWORD", ""),
+			FromEmail:    getEnv("SMTP_FROM_EMAIL", ""),
+			FromName:     getEnv("SMTP_FROM_NAME", "EMC LB"),
+			ResendAPIKey: getEnv("RESEND_API_KEY", ""),
+			ResendFrom:   getEnv("RESEND_FROM", ""),
+			OTPTTl:       getEnvDuration("EMAIL_OTP_TTL", 10*time.Minute),
 		},
 		Payment: PaymentSettings{
 			SepayEnv:        getEnv("SEPAY_ENV", "sandbox"),

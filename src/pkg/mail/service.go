@@ -9,7 +9,6 @@ import (
 	"net/smtp"
 
 	appconfig "emc_lb/src/pkg/config"
-	"emc_lb/src/pkg/utils"
 )
 
 //go:embed templates/*.html
@@ -35,22 +34,33 @@ type verificationOTPEmailData struct {
 	ExpiresInMinutes int
 }
 
-func NewSMTPMailer() Mailer {
-	// Prefer typed config; fall back to env vars if config not yet loaded
-	host := utils.GetEnv("SMTP_HOST", "")
-	port := utils.GetEnv("SMTP_PORT", "")
-	username := utils.GetEnv("SMTP_USERNAME", "")
-	password := utils.GetEnv("SMTP_PASSWORD", "")
-	fromEmail := utils.GetEnv("SMTP_FROM_EMAIL", "")
-	fromName := utils.GetEnv("SMTP_FROM_NAME", "EMC LB")
+func NewMailer() Mailer {
+	cfg, err := appconfig.Load()
+	if err != nil {
+		return noopMailer{}
+	}
 
-	if cfg, err := appconfig.Load(); err == nil {
-		host = cfg.Mail.Host
-		port = fmt.Sprintf("%d", cfg.Mail.Port)
-		username = cfg.Mail.Username
-		password = cfg.Mail.Password
-		fromEmail = cfg.Mail.FromEmail
-		fromName = cfg.Mail.FromName
+	switch cfg.Mail.Provider {
+	case "resend":
+		return NewResendMailer(cfg.Mail.ResendAPIKey, cfg.Mail.ResendFrom)
+	case "smtp":
+		return newSMTPMailer(cfg)
+	default:
+		// Unknown provider — try SMTP as fallback
+		return newSMTPMailer(cfg)
+	}
+}
+
+func newSMTPMailer(cfg *appconfig.AppConfig) Mailer {
+	host := cfg.Mail.Host
+	port := fmt.Sprintf("%d", cfg.Mail.Port)
+	username := cfg.Mail.Username
+	password := cfg.Mail.Password
+	fromEmail := cfg.Mail.FromEmail
+	fromName := cfg.Mail.FromName
+
+	if fromName == "" {
+		fromName = "EMC LB"
 	}
 
 	if host == "" || port == "" || username == "" || password == "" || fromEmail == "" {
@@ -65,6 +75,7 @@ func NewSMTPMailer() Mailer {
 		enabled:   true,
 	}
 }
+
 
 func (noopMailer) SendEmailVerificationOTP(context.Context, string, string, string, int) error {
 	return nil

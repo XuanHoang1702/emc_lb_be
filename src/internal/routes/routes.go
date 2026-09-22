@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -22,7 +23,18 @@ type Route interface {
 	RegisterProtected(gin.IRouter)
 }
 
+// AuthRateLimitedRoute is an optional interface for routes that need
+// stricter per-endpoint auth rate limiting (login, register, OTP, etc.).
+type AuthRateLimitedRoute interface {
+	Route
+	SetRedisClient(client *redis.Client)
+}
+
 func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Client, pgPool *pgxpool.Pool, mongoClient *mongo.Client, cfg *config.AppConfig) {
+	// Prometheus Metrics Layer
+	router.Use(middleware.PrometheusMiddleware())
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
 	// Public health check: simple up/down for load balancer probes
 	router.GET("/health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{
@@ -120,12 +132,21 @@ func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Clie
 
 	protectedGroup := apiV1.Group("")
 	protectedGroup.Use(middleware.AccessTokenMiddleware(cfg.JWT.AccessSecret))
+	// Apply rate limiting for authenticated users: max 200 requests per 10 seconds per user
+	if redisClient != nil {
+		protectedGroup.Use(middleware.RateLimitByUserMiddleware(redisClient, 200, 10*time.Second))
+	}
 
+	// Inject redis client into routes that implement AuthRateLimitedRoute
 	for _, moduleRoute := range modules {
 		if moduleRoute == nil {
 			continue
+		}
+		if authRoute, ok := moduleRoute.(AuthRateLimitedRoute); ok && redisClient != nil {
+			authRoute.SetRedisClient(redisClient)
 		}
 		moduleRoute.RegisterPublic(publicGroup)
 		moduleRoute.RegisterProtected(protectedGroup)
 	}
 }
+
