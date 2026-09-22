@@ -76,7 +76,6 @@ func newSMTPMailer(cfg *appconfig.AppConfig) Mailer {
 	}
 }
 
-
 func (noopMailer) SendEmailVerificationOTP(context.Context, string, string, string, int) error {
 	return nil
 }

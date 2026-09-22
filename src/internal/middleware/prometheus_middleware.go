@@ -49,7 +49,7 @@ func PrometheusMiddleware() gin.HandlerFunc {
 		duration := time.Since(start).Seconds()
 		status := strconv.Itoa(ctx.Writer.Status())
 		method := ctx.Request.Method
-		
+
 		// Use route template to avoid high cardinality (e.g., /api/v1/users/:id)
 		route := ctx.FullPath()
 		if route == "" {

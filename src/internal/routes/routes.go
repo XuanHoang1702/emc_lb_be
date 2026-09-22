@@ -149,4 +149,3 @@ func RegisterRoutes(router *gin.Engine, modules []Route, redisClient *redis.Clie
 		moduleRoute.RegisterProtected(protectedGroup)
 	}
 }
-
