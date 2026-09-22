@@ -330,7 +330,7 @@ services:
     image: prometheuscommunity/postgres-exporter:latest
     env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
-      DATA_SOURCE_NAME: postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@postgres:5432/$${POSTGRES_DB}?sslmode=disable
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
     networks:
       - emc-network
     logging: *default-logging
@@ -348,7 +348,7 @@ services:
     env_file: ${ECC_ENV_FILE:-../.env.development}
     command:
       - '-redis.addr=redis://redis:6379'
-      - '-redis.password=$${REDIS_PASSWORD}'
+      - '-redis.password=${REDIS_PASSWORD}'
       - '-check-keys=asynq:*:pending,asynq:*:active,asynq:*:retry,asynq:*:archived,asynq:*:completed'
     networks:
       - emc-network
