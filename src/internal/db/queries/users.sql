@@ -28,7 +28,11 @@ SELECT
     email,
     password_hash,
     email_verified,
-    role
+    role,
+    status,
+    is_banned,
+    locked_until,
+    failed_login_attempts
 FROM users
 WHERE email = $1 AND is_deleted = false
 LIMIT 1;
@@ -79,3 +83,41 @@ SET
     avatar_url = $2,
     updated_at = NOW()
 WHERE id = $1 AND is_deleted = false;
+
+-- name: UpdateFailedLoginAttempts :exec
+UPDATE users
+SET
+    failed_login_attempts = failed_login_attempts + 1,
+    updated_at = NOW()
+WHERE id = $1 AND is_deleted = false;
+
+-- name: LockUserAccount :exec
+UPDATE users
+SET
+    locked_until = $2,
+    updated_at = NOW()
+WHERE id = $1 AND is_deleted = false;
+
+-- name: UpdateUserLoginStats :exec
+UPDATE users
+SET
+    failed_login_attempts = 0,
+    last_login_at = NOW(),
+    last_login_ip = $2,
+    updated_at = NOW()
+WHERE id = $1 AND is_deleted = false;
+
+-- name: GetUserProfileByID :one
+SELECT
+    id,
+    email,
+    user_name,
+    phone,
+    avatar_url,
+    role,
+    status,
+    email_verified,
+    created_at
+FROM users
+WHERE id = $1 AND is_deleted = false
+LIMIT 1;

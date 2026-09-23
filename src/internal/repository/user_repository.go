@@ -18,6 +18,10 @@ type UserRepository interface {
 	VerifyEmail(context.Context, string) error
 	SoftDeleteByID(context.Context, uuid.UUID) error
 	UpdateAvatarByID(context.Context, uuid.UUID, string) error
+	UpdateFailedLoginAttempts(context.Context, uuid.UUID) error
+	LockUserAccount(context.Context, sqlc.LockUserAccountParams) error
+	UpdateUserLoginStats(context.Context, sqlc.UpdateUserLoginStatsParams) error
+	GetUserProfileByID(context.Context, uuid.UUID) (sqlc.GetUserProfileByIDRow, error)
 }
 
 type userRepository struct {
@@ -34,11 +38,15 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (entities
 		return entities.User{}, err
 	}
 	return entities.User{
-		ID:            row.ID,
-		Email:         row.Email,
-		PasswordHash:  row.PasswordHash,
-		EmailVerified: row.EmailVerified,
-		Role:          row.Role,
+		ID:                  row.ID,
+		Email:               row.Email,
+		PasswordHash:        row.PasswordHash,
+		EmailVerified:       row.EmailVerified,
+		Role:                row.Role,
+		Status:              row.Status,
+		IsBanned:            row.IsBanned,
+		LockedUntil:         row.LockedUntil,
+		FailedLoginAttempts: row.FailedLoginAttempts,
 	}, nil
 }
 
@@ -88,4 +96,20 @@ func (r *userRepository) UpdateAvatarByID(ctx context.Context, userID uuid.UUID,
 		ID:        userID,
 		AvatarUrl: &avatarURL,
 	})
+}
+
+func (r *userRepository) UpdateFailedLoginAttempts(ctx context.Context, id uuid.UUID) error {
+	return r.db.UpdateFailedLoginAttempts(ctx, id)
+}
+
+func (r *userRepository) LockUserAccount(ctx context.Context, arg sqlc.LockUserAccountParams) error {
+	return r.db.LockUserAccount(ctx, arg)
+}
+
+func (r *userRepository) UpdateUserLoginStats(ctx context.Context, arg sqlc.UpdateUserLoginStatsParams) error {
+	return r.db.UpdateUserLoginStats(ctx, arg)
+}
+
+func (r *userRepository) GetUserProfileByID(ctx context.Context, id uuid.UUID) (sqlc.GetUserProfileByIDRow, error) {
+	return r.db.GetUserProfileByID(ctx, id)
 }

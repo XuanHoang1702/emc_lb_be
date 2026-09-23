@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/netip"
 	"time"
+
+	"emc_lb/src/internal/db/sqlc"
 
 	"emc_lb/src/internal/repository"
 	"emc_lb/src/pkg/cache"
@@ -31,6 +34,7 @@ type UserService interface {
 	VerifyEmailOTP(context.Context, entities.VerifyEmailOTPRequest) error
 	Delete(context.Context, uuid.UUID) error
 	UpsertAvatar(context.Context, entities.UpsertAvatarRequest) (entities.UpsertAvatarResponse, error)
+	GetProfile(context.Context, uuid.UUID) (entities.UserProfileResponse, error)
 }
 
 type userService struct {
@@ -130,7 +134,38 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
 	}
 
+	if user.IsBanned {
+		return entities.LoginUserResponse{}, &res.AppError{
+			Message:    "Account is banned",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusForbidden,
+		}
+	}
+
+	if user.Status != "active" {
+		return entities.LoginUserResponse{}, &res.AppError{
+			Message:    "Account is inactive",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusForbidden,
+		}
+	}
+
+	if time.Now().Before(user.LockedUntil) {
+		return entities.LoginUserResponse{}, &res.AppError{
+			Message:    "Account is temporarily locked. Please try again later.",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusLocked,
+		}
+	}
+
 	if err = utils.CheckPassword(normalizedRequest.Password, user.PasswordHash, s.cfg.App.SystemSecret); err != nil {
+		_ = s.userRepository.UpdateFailedLoginAttempts(ctx, user.ID)
+		if user.FailedLoginAttempts+1 >= 5 {
+			_ = s.userRepository.LockUserAccount(ctx, sqlc.LockUserAccountParams{
+				ID:          user.ID,
+				LockedUntil: time.Now().Add(15 * time.Minute),
+			})
+		}
 		return entities.LoginUserResponse{}, &res.AppError{
 			Message:    "Invalid email or password",
 			Code:       erres.UserUnauthorized,
@@ -145,6 +180,17 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 			StatusCode: http.StatusUnauthorized,
 		}
 	}
+
+	var lastLoginIP *netip.Addr
+	if req.ClientIP != "" {
+		if ip, err := netip.ParseAddr(req.ClientIP); err == nil {
+			lastLoginIP = &ip
+		}
+	}
+	_ = s.userRepository.UpdateUserLoginStats(ctx, sqlc.UpdateUserLoginStatsParams{
+		ID:          user.ID,
+		LastLoginIp: lastLoginIP,
+	})
 
 	tokenPair, err := utils.GenerateTokenPair(user.ID.String(), user.Role, s.cfg.JWT)
 	if err != nil {
@@ -368,5 +414,41 @@ func (s *userService) UpsertAvatar(ctx context.Context, req entities.UpsertAvata
 
 	return entities.UpsertAvatarResponse{
 		AvatarURL: avatarURL,
+	}, nil
+}
+
+func (s *userService) GetProfile(ctx context.Context, userID uuid.UUID) (entities.UserProfileResponse, error) {
+	row, err := s.userRepository.GetUserProfileByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return entities.UserProfileResponse{}, &res.AppError{
+				Message:    "User not found",
+				Code:       erres.UserNotFound,
+				StatusCode: http.StatusNotFound,
+			}
+		}
+		return entities.UserProfileResponse{}, res.WrapError(err, "Can not get profile now", erres.UserGetFailed)
+	}
+
+	var avatarURL string
+	if row.AvatarUrl != nil {
+		avatarURL = *row.AvatarUrl
+	}
+	
+	var phone string
+	if row.Phone != nil {
+		phone = *row.Phone
+	}
+
+	return entities.UserProfileResponse{
+		ID:            row.ID,
+		Email:         row.Email,
+		UserName:      row.UserName,
+		Phone:         phone,
+		AvatarURL:     avatarURL,
+		Role:          row.Role,
+		Status:        row.Status,
+		EmailVerified: row.EmailVerified,
+		CreatedAt:     row.CreatedAt,
 	}, nil
 }

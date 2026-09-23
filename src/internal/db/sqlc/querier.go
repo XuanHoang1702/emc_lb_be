@@ -19,9 +19,13 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error)
 	GetUserIDByID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	GetUserProfileByID(ctx context.Context, id uuid.UUID) (GetUserProfileByIDRow, error)
+	LockUserAccount(ctx context.Context, arg LockUserAccountParams) error
 	SoftDeleteUserByID(ctx context.Context, id uuid.UUID) error
+	UpdateFailedLoginAttempts(ctx context.Context, id uuid.UUID) error
 	UpdateUserAvatarByEmail(ctx context.Context, arg UpdateUserAvatarByEmailParams) error
 	UpdateUserAvatarByID(ctx context.Context, arg UpdateUserAvatarByIDParams) error
+	UpdateUserLoginStats(ctx context.Context, arg UpdateUserLoginStatsParams) error
 	VerifyUserEmail(ctx context.Context, email string) error
 }
 

@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,18 +79,26 @@ SELECT
     email,
     password_hash,
     email_verified,
-    role
+    role,
+    status,
+    is_banned,
+    locked_until,
+    failed_login_attempts
 FROM users
 WHERE email = $1 AND is_deleted = false
 LIMIT 1
 `
 
 type GetUserByEmailRow struct {
-	ID            uuid.UUID `json:"id"`
-	Email         string    `json:"email"`
-	PasswordHash  string    `json:"password_hash"`
-	EmailVerified bool      `json:"email_verified"`
-	Role          string    `json:"role"`
+	ID                  uuid.UUID `json:"id"`
+	Email               string    `json:"email"`
+	PasswordHash        string    `json:"password_hash"`
+	EmailVerified       bool      `json:"email_verified"`
+	Role                string    `json:"role"`
+	Status              string    `json:"status"`
+	IsBanned            bool      `json:"is_banned"`
+	LockedUntil         time.Time `json:"locked_until"`
+	FailedLoginAttempts int32     `json:"failed_login_attempts"`
 }
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error) {
@@ -101,6 +110,10 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.PasswordHash,
 		&i.EmailVerified,
 		&i.Role,
+		&i.Status,
+		&i.IsBanned,
+		&i.LockedUntil,
+		&i.FailedLoginAttempts,
 	)
 	return i, err
 }
@@ -151,6 +164,69 @@ func (q *Queries) GetUserIDByID(ctx context.Context, id uuid.UUID) (uuid.UUID, e
 	return id, err
 }
 
+const getUserProfileByID = `-- name: GetUserProfileByID :one
+SELECT
+    id,
+    email,
+    user_name,
+    phone,
+    avatar_url,
+    role,
+    status,
+    email_verified,
+    created_at
+FROM users
+WHERE id = $1 AND is_deleted = false
+LIMIT 1
+`
+
+type GetUserProfileByIDRow struct {
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	UserName      string    `json:"user_name"`
+	Phone         *string   `json:"phone"`
+	AvatarUrl     *string   `json:"avatar_url"`
+	Role          string    `json:"role"`
+	Status        string    `json:"status"`
+	EmailVerified bool      `json:"email_verified"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+func (q *Queries) GetUserProfileByID(ctx context.Context, id uuid.UUID) (GetUserProfileByIDRow, error) {
+	row := q.db.QueryRow(ctx, getUserProfileByID, id)
+	var i GetUserProfileByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.UserName,
+		&i.Phone,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.Status,
+		&i.EmailVerified,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const lockUserAccount = `-- name: LockUserAccount :exec
+UPDATE users
+SET
+    locked_until = $2,
+    updated_at = NOW()
+WHERE id = $1 AND is_deleted = false
+`
+
+type LockUserAccountParams struct {
+	ID          uuid.UUID `json:"id"`
+	LockedUntil time.Time `json:"locked_until"`
+}
+
+func (q *Queries) LockUserAccount(ctx context.Context, arg LockUserAccountParams) error {
+	_, err := q.db.Exec(ctx, lockUserAccount, arg.ID, arg.LockedUntil)
+	return err
+}
+
 const softDeleteUserByID = `-- name: SoftDeleteUserByID :exec
 UPDATE users
 SET
@@ -162,6 +238,19 @@ WHERE id = $1 AND is_deleted = false
 
 func (q *Queries) SoftDeleteUserByID(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, softDeleteUserByID, id)
+	return err
+}
+
+const updateFailedLoginAttempts = `-- name: UpdateFailedLoginAttempts :exec
+UPDATE users
+SET
+    failed_login_attempts = failed_login_attempts + 1,
+    updated_at = NOW()
+WHERE id = $1 AND is_deleted = false
+`
+
+func (q *Queries) UpdateFailedLoginAttempts(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, updateFailedLoginAttempts, id)
 	return err
 }
 
@@ -198,6 +287,26 @@ type UpdateUserAvatarByIDParams struct {
 
 func (q *Queries) UpdateUserAvatarByID(ctx context.Context, arg UpdateUserAvatarByIDParams) error {
 	_, err := q.db.Exec(ctx, updateUserAvatarByID, arg.ID, arg.AvatarUrl)
+	return err
+}
+
+const updateUserLoginStats = `-- name: UpdateUserLoginStats :exec
+UPDATE users
+SET
+    failed_login_attempts = 0,
+    last_login_at = NOW(),
+    last_login_ip = $2,
+    updated_at = NOW()
+WHERE id = $1 AND is_deleted = false
+`
+
+type UpdateUserLoginStatsParams struct {
+	ID          uuid.UUID   `json:"id"`
+	LastLoginIp *netip.Addr `json:"last_login_ip"`
+}
+
+func (q *Queries) UpdateUserLoginStats(ctx context.Context, arg UpdateUserLoginStatsParams) error {
+	_, err := q.db.Exec(ctx, updateUserLoginStats, arg.ID, arg.LastLoginIp)
 	return err
 }
 

@@ -60,12 +60,16 @@ SELECT
     email,
     password_hash,
     email_verified,
-    role
+    role,
+    status,
+    is_banned,
+    locked_until,
+    failed_login_attempts
 FROM users
-WHERE email = $1 AND is_deleted = false`)).
+WHERE email = $1 AND is_deleted = false LIMIT 1`)).
 		WithArgs("john@example.com").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "email_verified", "role"}).
-			AddRow(id, "john@example.com", "$2a$10$hash", true, "customer"))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "email_verified", "role", "status", "is_banned", "locked_until", "failed_login_attempts"}).
+			AddRow(id, "john@example.com", "$2a$10$hash", true, "customer", "active", false, time.Time{}, int32(0)))
 
 	row, err := q.GetUserByEmail(context.Background(), "john@example.com")
 	if err != nil {
@@ -87,9 +91,13 @@ func TestGetUserByEmail_NotFound(t *testing.T) {
     email,
     password_hash,
     email_verified,
-    role
+    role,
+    status,
+    is_banned,
+    locked_until,
+    failed_login_attempts
 FROM users
-WHERE email = $1 AND is_deleted = false`)).
+WHERE email = $1 AND is_deleted = false LIMIT 1`)).
 		WithArgs("missing@example.com").
 		WillReturnError(pgx.ErrNoRows)
 

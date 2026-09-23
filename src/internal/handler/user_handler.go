@@ -71,6 +71,8 @@ func (h *UserHandler) HandleLogin(ctx *gin.Context) {
 		return
 	}
 
+	loginRequest.ClientIP = ctx.ClientIP()
+
 	data, err := h.userService.Login(ctx.Request.Context(), loginRequest)
 	if err != nil {
 		res.Error(ctx, err)
@@ -250,4 +252,45 @@ func (h *UserHandler) HandleUpsertAvatar(ctx *gin.Context) {
 	}
 
 	res.Success(ctx, http.StatusOK, data)
+}
+
+// HandleGetProfile godoc
+// @Summary      Get profile
+// @Description  Get current user profile
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Failure      404  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/user/me [get]
+func (h *UserHandler) HandleGetProfile(ctx *gin.Context) {
+	userIDStr := ctx.GetString(middleware.ContextUserIDKey)
+	if userIDStr == "" {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid access token",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid user ID",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
+	profile, err := h.userService.GetProfile(ctx.Request.Context(), userID)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, profile)
 }

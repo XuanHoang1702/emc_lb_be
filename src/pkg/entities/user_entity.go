@@ -86,6 +86,7 @@ type RegisterUserResponse struct {
 type LoginUserRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
+	ClientIP string `json:"-"`
 }
 
 type LoginUserResponse struct {
@@ -125,4 +126,20 @@ type UpsertAvatarRequest struct {
 
 type UpsertAvatarResponse struct {
 	AvatarURL string `json:"avatar_url"`
+}
+
+// ============================================================
+// Profile
+// ============================================================
+
+type UserProfileResponse struct {
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	UserName      string    `json:"user_name,omitempty"`
+	Phone         string    `json:"phone,omitempty"`
+	AvatarURL     string    `json:"avatar_url,omitempty"`
+	Role          string    `json:"role"`
+	Status        string    `json:"status"`
+	EmailVerified bool      `json:"email_verified"`
+	CreatedAt     time.Time `json:"created_at"`
 }

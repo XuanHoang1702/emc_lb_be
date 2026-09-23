@@ -61,6 +61,7 @@ func (r *UserRoute) RegisterPublic(router gin.IRouter) {
 func (r *UserRoute) RegisterProtected(router gin.IRouter) {
 	userRoute := router.Group("/user")
 	{
+		userRoute.GET("/me", r.userHandler.HandleGetProfile)
 		userRoute.POST("/logout", r.userHandler.HandleLogout)
 		userRoute.POST("/delete", r.userHandler.HandleDelete)
 		userRoute.PUT("/avatar", r.userHandler.HandleUpsertAvatar)

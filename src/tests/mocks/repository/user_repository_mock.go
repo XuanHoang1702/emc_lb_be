@@ -11,6 +11,7 @@ package mock_repository
 
 import (
 	context "context"
+	sqlc "emc_lb/src/internal/db/sqlc"
 	entities "emc_lb/src/pkg/entities"
 	reflect "reflect"
 
@@ -102,6 +103,35 @@ func (mr *MockUserRepositoryMockRecorder) GetIDByID(arg0, arg1 any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIDByID", reflect.TypeOf((*MockUserRepository)(nil).GetIDByID), arg0, arg1)
 }
 
+// GetUserProfileByID mocks base method.
+func (m *MockUserRepository) GetUserProfileByID(arg0 context.Context, arg1 uuid.UUID) (sqlc.GetUserProfileByIDRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserProfileByID", arg0, arg1)
+	ret0, _ := ret[0].(sqlc.GetUserProfileByIDRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserProfileByID indicates an expected call of GetUserProfileByID.
+func (mr *MockUserRepositoryMockRecorder) GetUserProfileByID(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserProfileByID", reflect.TypeOf((*MockUserRepository)(nil).GetUserProfileByID), arg0, arg1)
+}
+
+// LockUserAccount mocks base method.
+func (m *MockUserRepository) LockUserAccount(arg0 context.Context, arg1 sqlc.LockUserAccountParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LockUserAccount", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LockUserAccount indicates an expected call of LockUserAccount.
+func (mr *MockUserRepositoryMockRecorder) LockUserAccount(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockUserAccount", reflect.TypeOf((*MockUserRepository)(nil).LockUserAccount), arg0, arg1)
+}
+
 // SoftDeleteByID mocks base method.
 func (m *MockUserRepository) SoftDeleteByID(arg0 context.Context, arg1 uuid.UUID) error {
 	m.ctrl.T.Helper()
@@ -128,6 +158,34 @@ func (m *MockUserRepository) UpdateAvatarByID(arg0 context.Context, arg1 uuid.UU
 func (mr *MockUserRepositoryMockRecorder) UpdateAvatarByID(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAvatarByID", reflect.TypeOf((*MockUserRepository)(nil).UpdateAvatarByID), arg0, arg1, arg2)
+}
+
+// UpdateFailedLoginAttempts mocks base method.
+func (m *MockUserRepository) UpdateFailedLoginAttempts(arg0 context.Context, arg1 uuid.UUID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateFailedLoginAttempts", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateFailedLoginAttempts indicates an expected call of UpdateFailedLoginAttempts.
+func (mr *MockUserRepositoryMockRecorder) UpdateFailedLoginAttempts(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateFailedLoginAttempts", reflect.TypeOf((*MockUserRepository)(nil).UpdateFailedLoginAttempts), arg0, arg1)
+}
+
+// UpdateUserLoginStats mocks base method.
+func (m *MockUserRepository) UpdateUserLoginStats(arg0 context.Context, arg1 sqlc.UpdateUserLoginStatsParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateUserLoginStats", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateUserLoginStats indicates an expected call of UpdateUserLoginStats.
+func (mr *MockUserRepositoryMockRecorder) UpdateUserLoginStats(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateUserLoginStats", reflect.TypeOf((*MockUserRepository)(nil).UpdateUserLoginStats), arg0, arg1)
 }
 
 // VerifyEmail mocks base method.
