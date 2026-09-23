@@ -19,7 +19,6 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/joho/godotenv v1.5.1
 	github.com/klauspost/reedsolomon v1.14.2
-	github.com/pashagolub/pgxmock/v4 v4.9.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/v9 v9.14.1
 	github.com/resend/resend-go/v4 v4.6.0
@@ -31,7 +30,6 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	go.mongodb.org/mongo-driver/v2 v2.9.1
-	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.55.0
 )
 

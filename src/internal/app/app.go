@@ -105,7 +105,7 @@ func New() (*App, error) {
 
 	// ── 6. Shared services ───────────────────────────────────────────────────
 	queries := sqlc.New(logs.WrapDBTX(pgPool))
-	auth.InitRBACManager(queries)
+	auth.InitRBACManager(queries, redisClient)
 	refreshTokenStore := cache.NewRedisRefreshTokenStore(redisClient)
 	emailOTPStore := cache.NewRedisEmailOTPStore(redisClient)
 	mailer := mail.NewMailer()
@@ -158,6 +158,7 @@ func New() (*App, error) {
 	cartMod := module.NewCartModule(mongoDB, productMod.Repository(), couponMod.ServiceInstance())
 	shopMod := module.NewShopModule(mongoDB, redisClient)
 	userMod := module.NewUserModule(cfg, pgPool, queries, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
+	rbacMod := module.NewRBACModule(cfg, queries)
 
 	_ = deps // deps available for future module factories via registry
 
@@ -181,6 +182,7 @@ func New() (*App, error) {
 		paymentMod.Routes(),
 		cartMod.Route,
 		couponMod.Routes(),
+		rbacMod.Routes(),
 	}, redisClient, pgPool, mongoClient, cfg)
 
 	// ── 10. HTTP server ──────────────────────────────────────────────────────
