@@ -16,6 +16,7 @@ var templateFS embed.FS
 
 type Mailer interface {
 	SendEmailVerificationOTP(context.Context, string, string, string, int) error
+	SendOrderPaymentSuccessEmail(ctx context.Context, recipientEmail string, userName string, invoiceNumber string, amountPaid float64) error
 }
 
 type SMTPMailer struct {
@@ -32,6 +33,12 @@ type verificationOTPEmailData struct {
 	UserName         string
 	OTP              string
 	ExpiresInMinutes int
+}
+
+type paymentSuccessEmailData struct {
+	CustomerName  string
+	InvoiceNumber string
+	AmountPaid    string
 }
 
 func NewMailer() Mailer {
@@ -80,6 +87,10 @@ func (noopMailer) SendEmailVerificationOTP(context.Context, string, string, stri
 	return nil
 }
 
+func (noopMailer) SendOrderPaymentSuccessEmail(context.Context, string, string, string, float64) error {
+	return nil
+}
+
 func (m *SMTPMailer) SendEmailVerificationOTP(_ context.Context, recipientEmail string, userName string, otp string, expiresInMinutes int) error {
 	if m == nil || !m.enabled {
 		return nil
@@ -100,6 +111,38 @@ func (m *SMTPMailer) SendEmailVerificationOTP(_ context.Context, recipientEmail 
 
 func renderVerificationOTPEmail(data verificationOTPEmailData) (string, error) {
 	tpl, err := template.ParseFS(templateFS, "templates/email_verification_otp.html")
+	if err != nil {
+		return "", err
+	}
+
+	var buffer bytes.Buffer
+	if err := tpl.Execute(&buffer, data); err != nil {
+		return "", err
+	}
+
+	return buffer.String(), nil
+}
+
+func (m *SMTPMailer) SendOrderPaymentSuccessEmail(_ context.Context, recipientEmail string, userName string, invoiceNumber string, amountPaid float64) error {
+	if m == nil || !m.enabled {
+		return nil
+	}
+
+	htmlBody, err := renderPaymentSuccessEmail(paymentSuccessEmailData{
+		CustomerName:  userName,
+		InvoiceNumber: invoiceNumber,
+		AmountPaid:    fmt.Sprintf("%.2f", amountPaid),
+	})
+	if err != nil {
+		return err
+	}
+
+	message := buildHTMLMessage(m.fromName, m.fromEmail, recipientEmail, "Payment Successful", htmlBody)
+	return smtp.SendMail(m.address, m.auth, m.fromEmail, []string{recipientEmail}, []byte(message))
+}
+
+func renderPaymentSuccessEmail(data paymentSuccessEmailData) (string, error) {
+	tpl, err := template.ParseFS(templateFS, "templates/payment_success.html")
 	if err != nil {
 		return "", err
 	}

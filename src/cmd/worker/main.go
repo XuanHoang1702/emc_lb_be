@@ -35,8 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer pgPool.Close()
-
-	_ = sqlc.New(logs.WrapDBTX(pgPool))
+	queries := sqlc.New(logs.WrapDBTX(pgPool))
 
 	mailer := mail.NewMailer()
 
@@ -62,7 +61,7 @@ func main() {
 
 	couponMod := module.NewCouponModule(mongoDB, redisClient)
 	productMod := module.NewProductModule(mongoDB, redisClient)
-	orderMod := module.NewOrderModule(mongoDB, mongoClient, couponMod.ServiceInstance(), redisClient, productMod.CacheStore(), nil)
+	orderMod := module.NewOrderModule(mongoDB, pgPool, queries, couponMod.ServiceInstance(), redisClient, productMod.CacheStore(), nil)
 
 	processor := worker.NewRedisTaskProcessor(redisOpt, mailer, orderMod.Service())
 

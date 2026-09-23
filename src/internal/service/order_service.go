@@ -19,7 +19,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type OrderService interface {
@@ -29,6 +30,7 @@ type OrderService interface {
 	GetOrder(ctx context.Context, id string) (entities.OrderResponse, error)
 	GetOrderByInvoiceNumber(ctx context.Context, invoiceNumber string) (entities.OrderResponse, error)
 	MarkAsPaidByInvoice(ctx context.Context, invoiceNumber string, paidAmount float64) error
+	ConfirmPayment(ctx context.Context, invoiceNumber string, paidAmount float64, transactionID string) error
 	UpdateOrderStatus(ctx context.Context, id string, status string) error
 	CancelOrder(ctx context.Context, userID string, orderID string) error
 }
@@ -40,11 +42,11 @@ type orderService struct {
 	couponService     CouponService
 	inventoryService  InventoryService
 	productCache      cache.ProductCacheStore
-	mongoClient       *mongo.Client
+	pgxpool           *pgxpool.Pool
 	taskDistributor   worker.TaskDistributor
 }
 
-func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, cartRepo repository.CartRepository, couponSvc CouponService, inventoryService InventoryService, productCache cache.ProductCacheStore, mongoClient *mongo.Client, taskDistributor worker.TaskDistributor) OrderService {
+func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, cartRepo repository.CartRepository, couponSvc CouponService, inventoryService InventoryService, productCache cache.ProductCacheStore, pgxpool *pgxpool.Pool, taskDistributor worker.TaskDistributor) OrderService {
 	return &orderService{
 		orderRepository:   orderRepository,
 		productRepository: productRepository,
@@ -52,7 +54,7 @@ func NewOrderService(orderRepository repository.OrderRepository, productReposito
 		couponService:     couponSvc,
 		inventoryService:  inventoryService,
 		productCache:      productCache,
-		mongoClient:       mongoClient,
+		pgxpool:           pgxpool,
 		taskDistributor:   taskDistributor,
 	}
 }
@@ -69,7 +71,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 
 	var createdOrders []entities.OrderResponse
 	// Core order creation logic, called within or without a transaction.
-	coreLogic := func(opCtx context.Context) error {
+	coreLogic := func(opCtx context.Context, repo repository.OrderRepository) error {
 		createdOrders = nil
 
 		shopItems := make(map[string][]entities.OrderItem)
@@ -210,7 +212,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 				UpdatedAt:       now,
 			}
 
-			createdOrder, err := s.orderRepository.Create(opCtx, order)
+			createdOrder, err := repo.Create(opCtx, order)
 			if err != nil {
 				return res.WrapError(err, "Can not create order", erres.CommonInternal)
 			}
@@ -234,23 +236,23 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 	}
 
 	var execErr error
-	if s.mongoClient != nil {
-		// Production path: use MongoDB transaction for atomicity
-		session, err := s.mongoClient.StartSession()
+	if s.pgxpool != nil {
+		tx, err := s.pgxpool.Begin(ctx)
 		if err != nil {
-			return nil, res.WrapError(err, "Failed to start database session", erres.CommonInternal)
+			return nil, res.WrapError(err, "Failed to start database transaction", erres.CommonInternal)
 		}
-		defer session.EndSession(ctx)
+		defer tx.Rollback(ctx)
 
-		_, execErr = session.WithTransaction(ctx, func(sessCtx context.Context) (any, error) {
-			if err := coreLogic(sessCtx); err != nil {
-				return nil, err
-			}
-			return nil, nil
-		})
+		txRepo := s.orderRepository.WithTx(tx)
+		if err := coreLogic(ctx, txRepo); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, res.WrapError(err, "Failed to commit database transaction", erres.CommonInternal)
+		}
 	} else {
 		// Non-transactional fallback (unit tests or standalone mode)
-		execErr = coreLogic(ctx)
+		execErr = coreLogic(ctx, s.orderRepository)
 	}
 
 	if execErr != nil {
@@ -311,7 +313,72 @@ func (s *orderService) MarkAsPaidByInvoice(ctx context.Context, invoiceNumber st
 		}
 	}
 
-	return s.orderRepository.UpdatePaymentStatus(ctx, order.ID, "paid")
+	// Fallback/Legacy if MarkAsPaidByInvoice is used (no idempotency checks here, use ConfirmPayment)
+	// We map it to ConfirmPayment using empty transaction ID
+	return s.ConfirmPayment(ctx, invoiceNumber, paidAmount, "")
+}
+
+func (s *orderService) ConfirmPayment(ctx context.Context, invoiceNumber string, paidAmount float64, transactionID string) error {
+	order, err := s.orderRepository.GetByInvoiceNumber(ctx, invoiceNumber)
+	if err != nil {
+		return fmt.Errorf("order with invoice number %s not found: %w", invoiceNumber, err)
+	}
+
+	// Idempotency check
+	if order.PaymentTransactionID != nil && *order.PaymentTransactionID == transactionID && order.PaymentStatus == entities.PaymentStatusPaid {
+		// Already processed successfully, return nil
+		logs.WithContext(ctx).Info("webhook idempotency: already processed payment", "invoice", invoiceNumber, "tx_id", transactionID)
+		return nil
+	}
+
+	if !utils.MoneyEqual(order.TotalAmount, paidAmount) {
+		return &res.AppError{
+			Message:    fmt.Sprintf("Payment amount mismatch. Expected: %.2f, Got: %.2f", order.TotalAmount, paidAmount),
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
+	if order.Status == entities.OrderStatusCancelled {
+		// Refund needed scenario
+		logs.WithContext(ctx).Warn("payment received for cancelled order (refund needed)", "invoice", invoiceNumber)
+		// We can mark payment as paid, but leave order status as cancelled
+		_, err := s.orderRepository.ConfirmPaymentAtomic(ctx, invoiceNumber, entities.PaymentStatusUnpaid, entities.PaymentStatusPaid, entities.OrderStatusCancelled, transactionID)
+		return err
+	}
+
+	newStatus := entities.OrderStatusProcessing
+	if order.Status != entities.OrderStatusPending {
+		newStatus = order.Status // keep current status if not pending (e.g. already shipped)
+	}
+
+	rows, err := s.orderRepository.ConfirmPaymentAtomic(ctx, invoiceNumber, entities.PaymentStatusUnpaid, entities.PaymentStatusPaid, newStatus, transactionID)
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("could not confirm payment atomically, maybe state changed")
+	}
+
+	// Fetch customer info and dispatch email
+	if s.taskDistributor != nil {
+		email, name, errInfo := s.orderRepository.GetCustomerInfoByUserID(ctx, order.UserID)
+		if errInfo != nil {
+			logs.WithContext(ctx).Warn("could not get customer info for payment email", "user_id", order.UserID, "error", errInfo)
+		} else if email != "" {
+			err = s.taskDistributor.DistributeTaskSendOrderPaymentSuccessEmail(ctx, &worker.PayloadSendOrderPaymentSuccessEmail{
+				InvoiceNumber: invoiceNumber,
+				CustomerEmail: email,
+				CustomerName:  name,
+				AmountPaid:    paidAmount,
+			})
+			if err != nil {
+				logs.WithContext(ctx).Warn("failed to enqueue payment success email task", "invoice", invoiceNumber, "error", err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *orderService) UpdateOrderStatus(ctx context.Context, id string, status string) error {
@@ -342,10 +409,10 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, id string, status 
 }
 
 func (s *orderService) cancelOrderAtomic(ctx context.Context, order entities.Order) error {
-	coreLogic := func(opCtx context.Context) error {
+	coreLogic := func(opCtx context.Context, repo repository.OrderRepository) error {
 		// Atomic status update
-		if err := s.orderRepository.UpdateStatusAtomic(opCtx, order.ID, order.Status, entities.OrderStatusCancelled); err != nil {
-			if err == mongo.ErrNoDocuments {
+		if err := repo.UpdateStatusAtomic(opCtx, order.ID, order.Status, entities.OrderStatusCancelled); err != nil {
+			if err == pgx.ErrNoRows {
 				return &res.AppError{
 					Message:    "Order is no longer in a state that can be cancelled",
 					Code:       erres.CommonBadRequest,
@@ -367,21 +434,22 @@ func (s *orderService) cancelOrderAtomic(ctx context.Context, order entities.Ord
 	}
 
 	var execErr error
-	if s.mongoClient != nil {
-		session, err := s.mongoClient.StartSession()
+	if s.pgxpool != nil {
+		tx, err := s.pgxpool.Begin(ctx)
 		if err != nil {
 			return res.WrapError(err, "Failed to start database session", erres.CommonInternal)
 		}
-		defer session.EndSession(ctx)
+		defer tx.Rollback(ctx)
 
-		_, execErr = session.WithTransaction(ctx, func(sessCtx context.Context) (any, error) {
-			if err := coreLogic(sessCtx); err != nil {
-				return nil, err
-			}
-			return nil, nil
-		})
+		txRepo := s.orderRepository.WithTx(tx)
+		if err := coreLogic(ctx, txRepo); err != nil {
+			return err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return res.WrapError(err, "Failed to commit cancellation", erres.CommonInternal)
+		}
 	} else {
-		execErr = coreLogic(ctx)
+		execErr = coreLogic(ctx, s.orderRepository)
 	}
 
 	if execErr != nil {
@@ -409,9 +477,9 @@ func (s *orderService) CancelOrder(ctx context.Context, userID string, orderID s
 		}
 	}
 
-	if order.Status != entities.OrderStatusPending {
+	if order.Status != entities.OrderStatusPending && order.Status != entities.OrderStatusProcessing {
 		return &res.AppError{
-			Message:    "Only pending orders can be cancelled",
+			Message:    "Only pending or processing orders can be cancelled",
 			Code:       erres.CommonBadRequest,
 			StatusCode: http.StatusBadRequest,
 		}
@@ -434,7 +502,7 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 	var productIDsToClearFromCart []string
 
 	// Core order creation logic, called within or without a transaction.
-	coreLogic := func(opCtx context.Context) error {
+	coreLogic := func(opCtx context.Context, repo repository.OrderRepository) error {
 		createdOrders = nil
 		productIDsToClearFromCart = nil
 
@@ -591,7 +659,7 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 				UpdatedAt:       now,
 			}
 
-			createdOrder, err := s.orderRepository.Create(opCtx, order)
+			createdOrder, err := repo.Create(opCtx, order)
 			if err != nil {
 				return res.WrapError(err, "Can not create order", erres.CommonInternal)
 			}
@@ -613,23 +681,23 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 	}
 
 	var execErr error
-	if s.mongoClient != nil {
-		// Production path: use MongoDB transaction for atomicity
-		session, err := s.mongoClient.StartSession()
+	if s.pgxpool != nil {
+		tx, err := s.pgxpool.Begin(ctx)
 		if err != nil {
-			return nil, res.WrapError(err, "Failed to start database session", erres.CommonInternal)
+			return nil, res.WrapError(err, "Failed to start database transaction", erres.CommonInternal)
 		}
-		defer session.EndSession(ctx)
+		defer tx.Rollback(ctx)
 
-		_, execErr = session.WithTransaction(ctx, func(sessCtx context.Context) (any, error) {
-			if err := coreLogic(sessCtx); err != nil {
-				return nil, err
-			}
-			return nil, nil
-		})
+		txRepo := s.orderRepository.WithTx(tx)
+		if err := coreLogic(ctx, txRepo); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, res.WrapError(err, "Failed to commit database transaction", erres.CommonInternal)
+		}
 	} else {
 		// Non-transactional fallback (unit tests or standalone mode)
-		execErr = coreLogic(ctx)
+		execErr = coreLogic(ctx, s.orderRepository)
 	}
 
 	if execErr != nil {

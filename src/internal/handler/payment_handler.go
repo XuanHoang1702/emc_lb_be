@@ -7,6 +7,7 @@ import (
 	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/entities"
 	"emc_lb/src/pkg/errors"
+	"emc_lb/src/pkg/logs"
 	"emc_lb/src/pkg/res"
 	"emc_lb/src/pkg/validation"
 
@@ -73,6 +74,11 @@ func (h *PaymentHandler) HandleSepayIPN(ctx *gin.Context) {
 		})
 		return
 	}
+
+	logs.WithContext(ctx.Request.Context()).Info("Received SePay IPN webhook", 
+		"invoice", req.Order.OrderInvoiceNumber,
+		"transaction_id", req.Transaction.TransactionID,
+	)
 
 	secretHeader := ctx.GetHeader("X-Secret-Key")
 	if err := h.paymentService.ProcessIPN(ctx.Request.Context(), req, secretHeader); err != nil {

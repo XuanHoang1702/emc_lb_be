@@ -21,6 +21,42 @@ type CustomerStat struct {
 	UpdatedAt    time.Time      `json:"updated_at"`
 }
 
+type Order struct {
+	ID                   int64          `json:"id"`
+	Uuid                 uuid.UUID      `json:"uuid"`
+	PaymentGroupID       *string        `json:"payment_group_id"`
+	ShopID               *string        `json:"shop_id"`
+	UserID               int64          `json:"user_id"`
+	InvoiceNumber        string         `json:"invoice_number"`
+	SubTotal             pgtype.Numeric `json:"sub_total"`
+	CouponCode           *string        `json:"coupon_code"`
+	DiscountAmount       pgtype.Numeric `json:"discount_amount"`
+	TaxAmount            pgtype.Numeric `json:"tax_amount"`
+	TotalAmount          pgtype.Numeric `json:"total_amount"`
+	Status               string         `json:"status"`
+	PaymentStatus        string         `json:"payment_status"`
+	PaymentMethod        *string        `json:"payment_method"`
+	PaymentTransactionID *string        `json:"payment_transaction_id"`
+	ShippingAddress      *string        `json:"shipping_address"`
+	ContactPhone         *string        `json:"contact_phone"`
+	IsDeleted            bool           `json:"is_deleted"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+}
+
+type OrderItem struct {
+	ID          int64          `json:"id"`
+	Uuid        uuid.UUID      `json:"uuid"`
+	OrderID     int64          `json:"order_id"`
+	ProductID   string         `json:"product_id"`
+	ProductName string         `json:"product_name"`
+	Sku         *string        `json:"sku"`
+	Thumbnail   *string        `json:"thumbnail"`
+	Quantity    int32          `json:"quantity"`
+	Price       pgtype.Numeric `json:"price"`
+	SubTotal    pgtype.Numeric `json:"sub_total"`
+}
+
 type Permission struct {
 	Code        string    `json:"code"`
 	Name        string    `json:"name"`

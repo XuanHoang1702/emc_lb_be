@@ -153,7 +153,7 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
 
-	orderMod := module.NewOrderModule(mongoDB, mongoClient, couponMod.ServiceInstance(), redisClient, productMod.CacheStore(), taskDistributor)
+	orderMod := module.NewOrderModule(mongoDB, pgPool, queries, couponMod.ServiceInstance(), redisClient, productMod.CacheStore(), taskDistributor)
 	paymentMod := module.NewPaymentModule(cfg, orderMod.Service())
 	cartMod := module.NewCartModule(mongoDB, productMod.Repository(), couponMod.ServiceInstance())
 	shopMod := module.NewShopModule(mongoDB, redisClient)

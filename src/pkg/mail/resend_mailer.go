@@ -50,3 +50,28 @@ func (m *ResendMailer) SendEmailVerificationOTP(_ context.Context, recipientEmai
 
 	return nil
 }
+
+func (m *ResendMailer) SendOrderPaymentSuccessEmail(_ context.Context, recipientEmail string, userName string, invoiceNumber string, amountPaid float64) error {
+	htmlBody, err := renderPaymentSuccessEmail(paymentSuccessEmailData{
+		CustomerName:  userName,
+		InvoiceNumber: invoiceNumber,
+		AmountPaid:    fmt.Sprintf("%.2f", amountPaid),
+	})
+	if err != nil {
+		return fmt.Errorf("render email template: %w", err)
+	}
+
+	params := &resend.SendEmailRequest{
+		From:    m.from,
+		To:      []string{recipientEmail},
+		Subject: "Payment Successful",
+		Html:    htmlBody,
+	}
+
+	_, err = m.client.Emails.Send(params)
+	if err != nil {
+		return fmt.Errorf("resend send email: %w", err)
+	}
+
+	return nil
+}

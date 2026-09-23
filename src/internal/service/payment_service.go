@@ -218,7 +218,7 @@ func (s *paymentService) ProcessIPN(ctx context.Context, req entities.SePayIPNRe
 		"amount", req.Order.OrderAmount,
 		"method", req.Transaction.PaymentMethod)
 
-	if err := s.orderService.MarkAsPaidByInvoice(ctx, invoiceNumber, paidAmount); err != nil {
+	if err := s.orderService.ConfirmPayment(ctx, invoiceNumber, paidAmount, req.Transaction.TransactionID); err != nil {
 		logs.WithContext(ctx).Error("failed to mark order as paid",
 			"invoice", invoiceNumber, "error", err)
 		return err

@@ -1,8 +1,6 @@
 package module
 
 import (
-	"context"
-	"log"
 
 	"emc_lb/src/internal/handler"
 	"emc_lb/src/internal/repository"
@@ -11,6 +9,8 @@ import (
 	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/worker"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"emc_lb/src/internal/db/sqlc"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
@@ -20,18 +20,14 @@ type OrderModule struct {
 	orderService service.OrderService
 }
 
-func NewOrderModule(database *mongo.Database, mongoClient *mongo.Client, couponSvc service.CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore, taskDistributor worker.TaskDistributor) *OrderModule {
-	orderRepository := repository.NewOrderRepository(database.Collection("orders"))
+func NewOrderModule(database *mongo.Database, pgxpool *pgxpool.Pool, sqlcQuerier sqlc.Querier, couponSvc service.CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore, taskDistributor worker.TaskDistributor) *OrderModule {
+	orderRepository := repository.NewOrderRepository(pgxpool, sqlcQuerier)
 	productRepository := repository.NewProductRepository(database.Collection("products"))
 
-	// Ensure indexes for optimized lookups
-	if err := orderRepository.EnsureIndexes(context.Background()); err != nil {
-		log.Printf("warning: failed to ensure order indexes: %v", err)
-	}
 
 	inventoryService := service.NewInventoryService(redisClient)
 	cartRepository := repository.NewCartRepository(database.Collection("carts"))
-	orderService := service.NewOrderService(orderRepository, productRepository, cartRepository, couponSvc, inventoryService, productCache, mongoClient, taskDistributor)
+	orderService := service.NewOrderService(orderRepository, productRepository, cartRepository, couponSvc, inventoryService, productCache, pgxpool, taskDistributor)
 	orderHandler := handler.NewOrderHandler(orderService)
 	orderRoute := route.NewOrderRoute(orderHandler)
 

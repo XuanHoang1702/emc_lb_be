@@ -47,6 +47,10 @@ func (s *stubPaymentOrderSvc) GetOrderByInvoiceNumber(_ context.Context, invoice
 }
 
 func (s *stubPaymentOrderSvc) MarkAsPaidByInvoice(_ context.Context, invoiceNumber string, amount float64) error {
+	return nil
+}
+
+func (s *stubPaymentOrderSvc) ConfirmPayment(_ context.Context, invoiceNumber string, amount float64, transactionID string) error {
 	if s.markAsPaidFn != nil {
 		return s.markAsPaidFn(invoiceNumber, amount)
 	}

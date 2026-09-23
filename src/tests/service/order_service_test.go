@@ -7,13 +7,18 @@ import (
 	"net/http"
 	"testing"
 
+	"emc_lb/src/internal/repository"
 	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/entities"
 	"emc_lb/src/pkg/res"
+	"sync"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // stubOrderRepository for testing
 type stubOrderRepository struct {
+	mu             sync.Mutex
 	orders         []entities.Order
 	createFn       func(entities.Order) (entities.Order, error)
 	updateStatusFn func(string, string) error
@@ -37,6 +42,8 @@ func (r *stubOrderRepository) List(_ context.Context, _ string) ([]entities.Orde
 }
 
 func (r *stubOrderRepository) GetByID(_ context.Context, id string) (entities.Order, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for _, o := range r.orders {
 		if o.ID == id {
 			return o, nil
@@ -47,6 +54,8 @@ func (r *stubOrderRepository) GetByID(_ context.Context, id string) (entities.Or
 
 
 func (r *stubOrderRepository) UpdateStatusAtomic(_ context.Context, id string, expectedCurrent string, newStatus string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for i, o := range r.orders {
 		if o.ID == id {
 			if o.Status != expectedCurrent {
@@ -57,6 +66,30 @@ func (r *stubOrderRepository) UpdateStatusAtomic(_ context.Context, id string, e
 		}
 	}
 	return fmt.Errorf("not found order with id %s", id)
+}
+
+func (r *stubOrderRepository) ConfirmPaymentAtomic(_ context.Context, invoiceNumber, expectedCurrentPaymentStatus, newPaymentStatus, newOrderStatus, transactionID string) (int64, error) {
+	for i, o := range r.orders {
+		if o.InvoiceNumber == invoiceNumber {
+			if o.PaymentStatus != expectedCurrentPaymentStatus {
+				return 0, nil
+			}
+			r.orders[i].PaymentStatus = newPaymentStatus
+			r.orders[i].Status = newOrderStatus
+			tx := transactionID
+			r.orders[i].PaymentTransactionID = &tx
+			return 1, nil
+		}
+	}
+	return 0, nil
+}
+
+func (r *stubOrderRepository) GetCustomerInfoByUserID(ctx context.Context, userID string) (email string, name string, err error) {
+	return "test@example.com", "Test User", nil
+}
+
+func (r *stubOrderRepository) WithTx(tx pgx.Tx) repository.OrderRepository {
+	return r
 }
 
 func (r *stubOrderRepository) UpdateStatus(_ context.Context, id string, status string) error {
@@ -97,6 +130,7 @@ func (r *stubOrderRepository) EnsureIndexes(_ context.Context) error {
 
 // stubProductRepository for testing
 type stubProductRepository struct {
+	mu          sync.Mutex
 	products    map[string]entities.Product
 	stockDeltas map[string]int64
 }
@@ -122,6 +156,8 @@ func (r *stubProductRepository) List(_ context.Context) ([]entities.Product, err
 }
 
 func (r *stubProductRepository) GetByID(_ context.Context, id string) (entities.Product, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	p, ok := r.products[id]
 	if !ok {
 		return entities.Product{}, errors.New("not found")
@@ -138,6 +174,8 @@ func (r *stubProductRepository) Delete(_ context.Context, _ string, _ map[string
 }
 
 func (r *stubProductRepository) UpdateStock(_ context.Context, id string, stockDelta int64, _ int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.stockDeltas[id] += stockDelta
 	if p, ok := r.products[id]; ok {
 		p.Stock += stockDelta
@@ -147,6 +185,8 @@ func (r *stubProductRepository) UpdateStock(_ context.Context, id string, stockD
 }
 
 func (r *stubProductRepository) DeductStock(_ context.Context, id string, quantity int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	p, ok := r.products[id]
 	if !ok {
 		return errors.New("not found")

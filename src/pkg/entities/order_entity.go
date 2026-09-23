@@ -24,9 +24,10 @@ type Order struct {
 	DiscountAmount  float64     `json:"discount_amount"`
 	TaxAmount       float64     `json:"tax_amount"`
 	TotalAmount     float64     `json:"total_amount"`
-	Status          string      `json:"status"`         // pending, processing, shipped, delivered, cancelled
-	PaymentStatus   string      `json:"payment_status"` // unpaid, paid, failed, refunded
-	PaymentMethod   string      `json:"payment_method"`
+	Status               string      `json:"status"`         // pending, processing, shipped, delivered, cancelled
+	PaymentStatus        string      `json:"payment_status"` // unpaid, paid, failed, refunded
+	PaymentTransactionID *string     `json:"payment_transaction_id"`
+	PaymentMethod        string      `json:"payment_method"`
 	ShippingAddress string      `json:"shipping_address"`
 	ContactPhone    string      `json:"contact_phone"`
 	IsDeleted       bool        `json:"is_deleted"`
@@ -54,9 +55,10 @@ type OrderResponse struct {
 	DiscountAmount  float64     `json:"discount_amount"`
 	TaxAmount       float64     `json:"tax_amount"`
 	TotalAmount     float64     `json:"total_amount"`
-	Status          string      `json:"status"`
-	PaymentStatus   string      `json:"payment_status"`
-	PaymentMethod   string      `json:"payment_method"`
+	Status               string      `json:"status"`
+	PaymentStatus        string      `json:"payment_status"`
+	PaymentTransactionID *string     `json:"payment_transaction_id,omitempty"`
+	PaymentMethod        string      `json:"payment_method"`
 	ShippingAddress string      `json:"shipping_address"`
 	ContactPhone    string      `json:"contact_phone"`
 	CreatedAt       time.Time   `json:"created_at"`

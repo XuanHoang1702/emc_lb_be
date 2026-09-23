@@ -59,6 +59,7 @@ func (processor *RedisTaskProcessor) Start() error {
 
 	mux.HandleFunc(TaskSendVerifyEmail, processor.ProcessTaskSendVerifyEmail)
 	mux.HandleFunc(TaskCancelExpiredOrder, processor.ProcessTaskCancelExpiredOrder)
+	mux.HandleFunc(TaskSendOrderPaymentSuccessEmail, processor.ProcessTaskSendOrderPaymentSuccessEmail)
 
 	return processor.server.Start(mux)
 }

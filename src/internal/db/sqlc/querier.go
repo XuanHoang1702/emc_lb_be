@@ -12,19 +12,29 @@ import (
 
 type Querier interface {
 	AssignPermissionToRole(ctx context.Context, arg AssignPermissionToRoleParams) error
+	ConfirmPaymentAtomic(ctx context.Context, arg ConfirmPaymentAtomicParams) (int64, error)
 	CreateCustomerStats(ctx context.Context, userID int64) error
+	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
+	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
 	CreatePermission(ctx context.Context, arg CreatePermissionParams) (Permission, error)
 	CreateRole(ctx context.Context, arg CreateRoleParams) (Role, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	CreateUserProfile(ctx context.Context, arg CreateUserProfileParams) error
 	GetAllRolePermissions(ctx context.Context) ([]GetAllRolePermissionsRow, error)
+	GetOrderByInvoiceNumber(ctx context.Context, invoiceNumber string) (GetOrderByInvoiceNumberRow, error)
+	GetOrderByUUID(ctx context.Context, argUuid uuid.UUID) (GetOrderByUUIDRow, error)
+	GetOrderItemsByOrderID(ctx context.Context, orderID int64) ([]OrderItem, error)
 	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
 	GetUserByUUID(ctx context.Context, argUuid uuid.UUID) (GetUserByUUIDRow, error)
 	GetUserIDByUUID(ctx context.Context, argUuid uuid.UUID) (int64, error)
 	GetUserProfileByUUID(ctx context.Context, argUuid uuid.UUID) (GetUserProfileByUUIDRow, error)
+	ListAllOrders(ctx context.Context) ([]Order, error)
+	ListOrdersByUserID(ctx context.Context, argUuid uuid.UUID) ([]Order, error)
 	LockUserAccount(ctx context.Context, arg LockUserAccountParams) error
 	SoftDeleteUserByUUID(ctx context.Context, argUuid uuid.UUID) error
 	UpdateFailedLoginAttempts(ctx context.Context, id int64) error
+	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error
+	UpdateOrderStatusAtomic(ctx context.Context, arg UpdateOrderStatusAtomicParams) (int64, error)
 	UpdateUserAvatarByUUID(ctx context.Context, arg UpdateUserAvatarByUUIDParams) error
 	UpdateUserLoginStats(ctx context.Context, arg UpdateUserLoginStatsParams) error
 	VerifyUserEmail(ctx context.Context, email string) error

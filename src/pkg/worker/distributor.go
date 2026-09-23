@@ -19,6 +19,11 @@ type TaskDistributor interface {
 		payload *PayloadCancelExpiredOrder,
 		opts ...asynq.Option,
 	) error
+	DistributeTaskSendOrderPaymentSuccessEmail(
+		ctx context.Context,
+		payload *PayloadSendOrderPaymentSuccessEmail,
+		opts ...asynq.Option,
+	) error
 }
 
 type RedisTaskDistributor struct {
@@ -71,3 +76,24 @@ func (distributor *RedisTaskDistributor) DistributeTaskCancelExpiredOrder(
 
 	return nil
 }
+
+func (distributor *RedisTaskDistributor) DistributeTaskSendOrderPaymentSuccessEmail(
+	ctx context.Context,
+	payload *PayloadSendOrderPaymentSuccessEmail,
+	opts ...asynq.Option,
+) error {
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal task payload: %w", err)
+	}
+
+	task := asynq.NewTask(TaskSendOrderPaymentSuccessEmail, jsonPayload, opts...)
+
+	_, err = distributor.client.EnqueueContext(ctx, task)
+	if err != nil {
+		return fmt.Errorf("failed to enqueue task: %w", err)
+	}
+
+	return nil
+}
+
