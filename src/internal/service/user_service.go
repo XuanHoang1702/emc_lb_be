@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -39,6 +40,7 @@ type UserService interface {
 
 type userService struct {
 	cfg               *config.AppConfig
+	pool              *pgxpool.Pool
 	userRepository    repository.UserRepository
 	refreshTokenStore cache.RefreshTokenStore
 	emailOTPStore     cache.EmailOTPStore
@@ -46,9 +48,10 @@ type userService struct {
 	avatarStorage     storage.AvatarStorage
 }
 
-func NewUserService(cfg *config.AppConfig, userRepository repository.UserRepository, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) UserService {
+func NewUserService(cfg *config.AppConfig, pool *pgxpool.Pool, userRepository repository.UserRepository, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) UserService {
 	return &userService{
 		cfg:               cfg,
+		pool:              pool,
 		userRepository:    userRepository,
 		refreshTokenStore: refreshTokenStore,
 		emailOTPStore:     emailOTPStore,
@@ -83,9 +86,24 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not create account now", erres.CommonInternal)
 	}
 
-	userEntity := mapping.ToUserEntity(normalizedRequest, passwordHash)
-	data, err := s.userRepository.Create(ctx, userEntity)
+	userEntity, userProfile := mapping.ToUserEntity(normalizedRequest, passwordHash)
+
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
+		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not start transaction now", erres.CommonInternal)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	repoTx := s.userRepository.WithTx(tx)
+
+	data, err := repoTx.Create(ctx, userEntity, userProfile)
+	if err != nil {
+		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not create account now", erres.UserCreateFailed)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not create account now", erres.UserCreateFailed)
 	}
 
@@ -113,7 +131,7 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 		})
 	}
 
-	return mapping.ToRegisterUserResponse(data), nil
+	return mapping.ToRegisterUserResponse(data, userProfile), nil
 }
 
 func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) (entities.LoginUserResponse, error) {
@@ -181,25 +199,25 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 		}
 	}
 
-	var lastLoginIP *netip.Addr
+	var lastLoginIPStr *string
 	if req.ClientIP != "" {
-		if ip, err := netip.ParseAddr(req.ClientIP); err == nil {
-			lastLoginIP = &ip
+		if _, err := netip.ParseAddr(req.ClientIP); err == nil {
+			lastLoginIPStr = &req.ClientIP
 		}
 	}
 	_ = s.userRepository.UpdateUserLoginStats(ctx, sqlc.UpdateUserLoginStatsParams{
 		ID:          user.ID,
-		LastLoginIp: lastLoginIP,
+		LastLoginIp: lastLoginIPStr,
 	})
 
-	tokenPair, err := utils.GenerateTokenPair(user.ID.String(), user.Role, s.cfg.JWT)
+	tokenPair, err := utils.GenerateTokenPair(user.UUID.String(), user.Role, s.cfg.JWT)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not login now", erres.CommonInternal)
 	}
 
 	if err := s.refreshTokenStore.Save(
 		ctx,
-		user.ID.String(),
+		user.UUID.String(),
 		tokenPair.RefreshToken,
 		time.Until(tokenPair.RefreshTokenExpiresAt),
 	); err != nil {
@@ -232,7 +250,7 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 		return entities.LoginUserResponse{}, res.WrapError(err, "Invalid user ID in refresh token", erres.CommonInternal)
 	}
 
-	user, err := s.userRepository.GetByID(ctx, uid)
+	user, err := s.userRepository.GetByUUID(ctx, uid)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
 	}
@@ -320,7 +338,7 @@ func (s *userService) VerifyEmailOTP(ctx context.Context, req entities.VerifyEma
 }
 
 func (s *userService) Delete(ctx context.Context, userID uuid.UUID) error {
-	if _, err := s.userRepository.GetByID(ctx, userID); err != nil {
+	if _, err := s.userRepository.GetByUUID(ctx, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return &res.AppError{
 				Message:    "User not found",
@@ -332,7 +350,7 @@ func (s *userService) Delete(ctx context.Context, userID uuid.UUID) error {
 		return res.WrapError(err, "Can not get account now", erres.UserGetFailed)
 	}
 
-	if err := s.userRepository.SoftDeleteByID(ctx, userID); err != nil {
+	if err := s.userRepository.SoftDeleteByUUID(ctx, userID); err != nil {
 		return res.WrapError(err, "Can not delete account now", erres.UserUpdateFailed)
 	}
 
@@ -360,7 +378,7 @@ func (s *userService) UpsertAvatar(ctx context.Context, req entities.UpsertAvata
 		}
 	}
 
-	if _, err = s.userRepository.GetIDByID(ctx, userID); err != nil {
+	if _, err = s.userRepository.GetIDByUUID(ctx, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return entities.UpsertAvatarResponse{}, &res.AppError{
 				Message:    "User not found",
@@ -408,7 +426,7 @@ func (s *userService) UpsertAvatar(ctx context.Context, req entities.UpsertAvata
 		return entities.UpsertAvatarResponse{}, res.WrapError(err, "Can not upload avatar now", erres.CommonInternal)
 	}
 
-	if err := s.userRepository.UpdateAvatarByID(ctx, userID, avatarURL); err != nil {
+	if err := s.userRepository.UpdateAvatarByUUID(ctx, userID, avatarURL); err != nil {
 		return entities.UpsertAvatarResponse{}, res.WrapError(err, "Can not update avatar now", erres.UserUpdateFailed)
 	}
 
@@ -418,7 +436,7 @@ func (s *userService) UpsertAvatar(ctx context.Context, req entities.UpsertAvata
 }
 
 func (s *userService) GetProfile(ctx context.Context, userID uuid.UUID) (entities.UserProfileResponse, error) {
-	row, err := s.userRepository.GetUserProfileByID(ctx, userID)
+	row, err := s.userRepository.GetUserProfileByUUID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return entities.UserProfileResponse{}, &res.AppError{
@@ -439,16 +457,29 @@ func (s *userService) GetProfile(ctx context.Context, userID uuid.UUID) (entitie
 	if row.Phone != nil {
 		phone = *row.Phone
 	}
+	
+	var fullName string
+	if row.FullName != nil {
+		fullName = *row.FullName
+	}
+
+	var userName string
+	if row.UserName != nil {
+		userName = *row.UserName
+	}
 
 	return entities.UserProfileResponse{
-		ID:            row.ID,
+		ID:            row.Uuid,
 		Email:         row.Email,
-		UserName:      row.UserName,
-		Phone:         phone,
-		AvatarURL:     avatarURL,
 		Role:          row.Role,
 		Status:        row.Status,
 		EmailVerified: row.EmailVerified,
 		CreatedAt:     row.CreatedAt,
+		Profile: entities.ProfileData{
+			UserName:  userName,
+			FullName:  fullName,
+			Phone:     phone,
+			AvatarURL: avatarURL,
+		},
 	}, nil
 }

@@ -157,7 +157,7 @@ func New() (*App, error) {
 	paymentMod := module.NewPaymentModule(cfg, orderMod.Service())
 	cartMod := module.NewCartModule(mongoDB, productMod.Repository(), couponMod.ServiceInstance())
 	shopMod := module.NewShopModule(mongoDB, redisClient)
-	userMod := module.NewUserModule(cfg, queries, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
+	userMod := module.NewUserModule(cfg, pgPool, queries, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
 
 	_ = deps // deps available for future module factories via registry
 

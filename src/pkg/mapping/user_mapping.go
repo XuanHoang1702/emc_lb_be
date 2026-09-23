@@ -1,45 +1,42 @@
 package mapping
 
 import (
-	"github.com/google/uuid"
-
 	"emc_lb/src/internal/db/sqlc"
 	"emc_lb/src/pkg/entities"
 )
 
-func ToUserEntity(request entities.RegisterUserRequest, passwordHash string) entities.User {
-	var userName *string
-	if request.UserName != "" {
-		userName = &request.UserName
-	}
-
+func ToUserEntity(request entities.RegisterUserRequest, passwordHash string) (entities.User, entities.UserProfile) {
 	var phone *string
 	if request.Phone != "" {
 		phone = &request.Phone
 	}
 
-	return entities.User{
-		ID:           uuid.New(),
+	user := entities.User{
 		Email:        request.Email,
 		PasswordHash: passwordHash,
-		UserName:     *userName,
-		Phone:        phone,
 	}
+
+	profile := entities.UserProfile{
+		UserName: request.UserName,
+		Phone:    phone,
+	}
+
+	return user, profile
 }
 
-func ToRegisterUserResponse(user entities.User) entities.RegisterUserResponse {
+func ToRegisterUserResponse(user entities.User, profile entities.UserProfile) entities.RegisterUserResponse {
 	response := entities.RegisterUserResponse{
-		ID:        user.ID,
+		ID:        user.UUID,
 		Email:     user.Email,
 		CreatedAt: user.CreatedAt,
 	}
 
-	if user.UserName != "" {
-		response.UserName = user.UserName
+	if profile.UserName != "" {
+		response.UserName = profile.UserName
 	}
 
-	if user.Phone != nil {
-		response.Phone = *user.Phone
+	if profile.Phone != nil {
+		response.Phone = *profile.Phone
 	}
 
 	return response
@@ -48,9 +45,8 @@ func ToRegisterUserResponse(user entities.User) entities.RegisterUserResponse {
 func ToUserEntityFromSqlc(row sqlc.CreateUserRow) entities.User {
 	return entities.User{
 		ID:        row.ID,
+		UUID:      row.Uuid,
 		Email:     row.Email,
-		UserName:  row.UserName,
-		Phone:     row.Phone,
 		CreatedAt: row.CreatedAt,
 	}
 }

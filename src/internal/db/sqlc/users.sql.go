@@ -7,75 +7,88 @@ package sqlc
 
 import (
 	"context"
-	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const createCustomerStats = `-- name: CreateCustomerStats :exec
+INSERT INTO customer_stats (
+    user_id
+) VALUES (
+    $1
+)
+`
+
+func (q *Queries) CreateCustomerStats(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, createCustomerStats, userID)
+	return err
+}
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (
-    id,
     email,
     password_hash,
-    user_name,
-    phone,
     role,
     status,
-    email_verified,
-    phone_verified
+    email_verified
 ) VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    'customer',
-    'active',
-    false,
-    false
+    $1, $2, 'customer', 'active', false
 )
-RETURNING id, email, user_name, phone, created_at
+RETURNING id, uuid, email, created_at
 `
 
 type CreateUserParams struct {
-	ID           uuid.UUID `json:"id"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"password_hash"`
-	UserName     string    `json:"user_name"`
-	Phone        *string   `json:"phone"`
+	Email        string `json:"email"`
+	PasswordHash string `json:"password_hash"`
 }
 
 type CreateUserRow struct {
-	ID        uuid.UUID `json:"id"`
+	ID        int64     `json:"id"`
+	Uuid      uuid.UUID `json:"uuid"`
 	Email     string    `json:"email"`
-	UserName  string    `json:"user_name"`
-	Phone     *string   `json:"phone"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
-	row := q.db.QueryRow(ctx, createUser,
-		arg.ID,
-		arg.Email,
-		arg.PasswordHash,
-		arg.UserName,
-		arg.Phone,
-	)
+	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.PasswordHash)
 	var i CreateUserRow
 	err := row.Scan(
 		&i.ID,
+		&i.Uuid,
 		&i.Email,
-		&i.UserName,
-		&i.Phone,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
+const createUserProfile = `-- name: CreateUserProfile :exec
+INSERT INTO user_profiles (
+    user_id,
+    user_name,
+    phone,
+    phone_verified
+) VALUES (
+    $1, $2, $3, false
+)
+`
+
+type CreateUserProfileParams struct {
+	UserID   int64   `json:"user_id"`
+	UserName *string `json:"user_name"`
+	Phone    *string `json:"phone"`
+}
+
+func (q *Queries) CreateUserProfile(ctx context.Context, arg CreateUserProfileParams) error {
+	_, err := q.db.Exec(ctx, createUserProfile, arg.UserID, arg.UserName, arg.Phone)
+	return err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT
     id,
+    uuid,
     email,
     password_hash,
     email_verified,
@@ -90,7 +103,8 @@ LIMIT 1
 `
 
 type GetUserByEmailRow struct {
-	ID                  uuid.UUID `json:"id"`
+	ID                  int64     `json:"id"`
+	Uuid                uuid.UUID `json:"uuid"`
 	Email               string    `json:"email"`
 	PasswordHash        string    `json:"password_hash"`
 	EmailVerified       bool      `json:"email_verified"`
@@ -106,6 +120,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.ID,
+		&i.Uuid,
 		&i.Email,
 		&i.PasswordHash,
 		&i.EmailVerified,
@@ -118,31 +133,34 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 	return i, err
 }
 
-const getUserByID = `-- name: GetUserByID :one
+const getUserByUUID = `-- name: GetUserByUUID :one
 SELECT
     id,
+    uuid,
     email,
     password_hash,
     email_verified,
     role
 FROM users
-WHERE id = $1 AND is_deleted = false
+WHERE uuid = $1 AND is_deleted = false
 LIMIT 1
 `
 
-type GetUserByIDRow struct {
-	ID            uuid.UUID `json:"id"`
+type GetUserByUUIDRow struct {
+	ID            int64     `json:"id"`
+	Uuid          uuid.UUID `json:"uuid"`
 	Email         string    `json:"email"`
 	PasswordHash  string    `json:"password_hash"`
 	EmailVerified bool      `json:"email_verified"`
 	Role          string    `json:"role"`
 }
 
-func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error) {
-	row := q.db.QueryRow(ctx, getUserByID, id)
-	var i GetUserByIDRow
+func (q *Queries) GetUserByUUID(ctx context.Context, argUuid uuid.UUID) (GetUserByUUIDRow, error) {
+	row := q.db.QueryRow(ctx, getUserByUUID, argUuid)
+	var i GetUserByUUIDRow
 	err := row.Scan(
 		&i.ID,
+		&i.Uuid,
 		&i.Email,
 		&i.PasswordHash,
 		&i.EmailVerified,
@@ -151,60 +169,75 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow
 	return i, err
 }
 
-const getUserIDByID = `-- name: GetUserIDByID :one
+const getUserIDByUUID = `-- name: GetUserIDByUUID :one
 SELECT id
 FROM users
-WHERE id = $1 AND is_deleted = false
+WHERE uuid = $1 AND is_deleted = false
 LIMIT 1
 `
 
-func (q *Queries) GetUserIDByID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getUserIDByID, id)
+func (q *Queries) GetUserIDByUUID(ctx context.Context, argUuid uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getUserIDByUUID, argUuid)
+	var id int64
 	err := row.Scan(&id)
 	return id, err
 }
 
-const getUserProfileByID = `-- name: GetUserProfileByID :one
+const getUserProfileByUUID = `-- name: GetUserProfileByUUID :one
 SELECT
-    id,
-    email,
-    user_name,
-    phone,
-    avatar_url,
-    role,
-    status,
-    email_verified,
-    created_at
-FROM users
-WHERE id = $1 AND is_deleted = false
+    u.uuid,
+    u.email,
+    p.user_name,
+    p.full_name,
+    p.phone,
+    p.avatar_url,
+    u.role,
+    u.status,
+    u.email_verified,
+    u.created_at,
+    cs.total_orders,
+    cs.total_spent,
+    cs.reward_points
+FROM users u
+JOIN user_profiles p ON u.id = p.user_id
+JOIN customer_stats cs ON u.id = cs.user_id
+WHERE u.uuid = $1 AND u.is_deleted = false
 LIMIT 1
 `
 
-type GetUserProfileByIDRow struct {
-	ID            uuid.UUID `json:"id"`
-	Email         string    `json:"email"`
-	UserName      string    `json:"user_name"`
-	Phone         *string   `json:"phone"`
-	AvatarUrl     *string   `json:"avatar_url"`
-	Role          string    `json:"role"`
-	Status        string    `json:"status"`
-	EmailVerified bool      `json:"email_verified"`
-	CreatedAt     time.Time `json:"created_at"`
+type GetUserProfileByUUIDRow struct {
+	Uuid          uuid.UUID      `json:"uuid"`
+	Email         string         `json:"email"`
+	UserName      *string        `json:"user_name"`
+	FullName      *string        `json:"full_name"`
+	Phone         *string        `json:"phone"`
+	AvatarUrl     *string        `json:"avatar_url"`
+	Role          string         `json:"role"`
+	Status        string         `json:"status"`
+	EmailVerified bool           `json:"email_verified"`
+	CreatedAt     time.Time      `json:"created_at"`
+	TotalOrders   int32          `json:"total_orders"`
+	TotalSpent    pgtype.Numeric `json:"total_spent"`
+	RewardPoints  int32          `json:"reward_points"`
 }
 
-func (q *Queries) GetUserProfileByID(ctx context.Context, id uuid.UUID) (GetUserProfileByIDRow, error) {
-	row := q.db.QueryRow(ctx, getUserProfileByID, id)
-	var i GetUserProfileByIDRow
+func (q *Queries) GetUserProfileByUUID(ctx context.Context, argUuid uuid.UUID) (GetUserProfileByUUIDRow, error) {
+	row := q.db.QueryRow(ctx, getUserProfileByUUID, argUuid)
+	var i GetUserProfileByUUIDRow
 	err := row.Scan(
-		&i.ID,
+		&i.Uuid,
 		&i.Email,
 		&i.UserName,
+		&i.FullName,
 		&i.Phone,
 		&i.AvatarUrl,
 		&i.Role,
 		&i.Status,
 		&i.EmailVerified,
 		&i.CreatedAt,
+		&i.TotalOrders,
+		&i.TotalSpent,
+		&i.RewardPoints,
 	)
 	return i, err
 }
@@ -212,13 +245,12 @@ func (q *Queries) GetUserProfileByID(ctx context.Context, id uuid.UUID) (GetUser
 const lockUserAccount = `-- name: LockUserAccount :exec
 UPDATE users
 SET
-    locked_until = $2,
-    updated_at = NOW()
+    locked_until = $2
 WHERE id = $1 AND is_deleted = false
 `
 
 type LockUserAccountParams struct {
-	ID          uuid.UUID `json:"id"`
+	ID          int64     `json:"id"`
 	LockedUntil time.Time `json:"locked_until"`
 }
 
@@ -227,66 +259,46 @@ func (q *Queries) LockUserAccount(ctx context.Context, arg LockUserAccountParams
 	return err
 }
 
-const softDeleteUserByID = `-- name: SoftDeleteUserByID :exec
+const softDeleteUserByUUID = `-- name: SoftDeleteUserByUUID :exec
 UPDATE users
 SET
     is_deleted = true,
     deleted_at = NOW(),
     updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
+WHERE uuid = $1 AND is_deleted = false
 `
 
-func (q *Queries) SoftDeleteUserByID(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, softDeleteUserByID, id)
+func (q *Queries) SoftDeleteUserByUUID(ctx context.Context, argUuid uuid.UUID) error {
+	_, err := q.db.Exec(ctx, softDeleteUserByUUID, argUuid)
 	return err
 }
 
 const updateFailedLoginAttempts = `-- name: UpdateFailedLoginAttempts :exec
 UPDATE users
 SET
-    failed_login_attempts = failed_login_attempts + 1,
-    updated_at = NOW()
+    failed_login_attempts = failed_login_attempts + 1
 WHERE id = $1 AND is_deleted = false
 `
 
-func (q *Queries) UpdateFailedLoginAttempts(ctx context.Context, id uuid.UUID) error {
+func (q *Queries) UpdateFailedLoginAttempts(ctx context.Context, id int64) error {
 	_, err := q.db.Exec(ctx, updateFailedLoginAttempts, id)
 	return err
 }
 
-const updateUserAvatarByEmail = `-- name: UpdateUserAvatarByEmail :exec
-UPDATE users
+const updateUserAvatarByUUID = `-- name: UpdateUserAvatarByUUID :exec
+UPDATE user_profiles
 SET
-    avatar_url = $2,
-    updated_at = NOW()
-WHERE email = $1 AND is_deleted = false
+    avatar_url = $2
+WHERE user_id = (SELECT id FROM users WHERE uuid = $1 AND is_deleted = false)
 `
 
-type UpdateUserAvatarByEmailParams struct {
-	Email     string  `json:"email"`
-	AvatarUrl *string `json:"avatar_url"`
-}
-
-func (q *Queries) UpdateUserAvatarByEmail(ctx context.Context, arg UpdateUserAvatarByEmailParams) error {
-	_, err := q.db.Exec(ctx, updateUserAvatarByEmail, arg.Email, arg.AvatarUrl)
-	return err
-}
-
-const updateUserAvatarByID = `-- name: UpdateUserAvatarByID :exec
-UPDATE users
-SET
-    avatar_url = $2,
-    updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
-`
-
-type UpdateUserAvatarByIDParams struct {
-	ID        uuid.UUID `json:"id"`
+type UpdateUserAvatarByUUIDParams struct {
+	Uuid      uuid.UUID `json:"uuid"`
 	AvatarUrl *string   `json:"avatar_url"`
 }
 
-func (q *Queries) UpdateUserAvatarByID(ctx context.Context, arg UpdateUserAvatarByIDParams) error {
-	_, err := q.db.Exec(ctx, updateUserAvatarByID, arg.ID, arg.AvatarUrl)
+func (q *Queries) UpdateUserAvatarByUUID(ctx context.Context, arg UpdateUserAvatarByUUIDParams) error {
+	_, err := q.db.Exec(ctx, updateUserAvatarByUUID, arg.Uuid, arg.AvatarUrl)
 	return err
 }
 
@@ -295,14 +307,13 @@ UPDATE users
 SET
     failed_login_attempts = 0,
     last_login_at = NOW(),
-    last_login_ip = $2,
-    updated_at = NOW()
+    last_login_ip = $2
 WHERE id = $1 AND is_deleted = false
 `
 
 type UpdateUserLoginStatsParams struct {
-	ID          uuid.UUID   `json:"id"`
-	LastLoginIp *netip.Addr `json:"last_login_ip"`
+	ID          int64   `json:"id"`
+	LastLoginIp *string `json:"last_login_ip"`
 }
 
 func (q *Queries) UpdateUserLoginStats(ctx context.Context, arg UpdateUserLoginStatsParams) error {
@@ -316,7 +327,7 @@ SET
     email_verified = true,
     email_verified_at = NOW(),
     updated_at = NOW()
-WHERE email = $1
+WHERE email = $1 AND is_deleted = false
 `
 
 func (q *Queries) VerifyUserEmail(ctx context.Context, email string) error {

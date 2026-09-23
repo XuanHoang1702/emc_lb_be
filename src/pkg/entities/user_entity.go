@@ -7,54 +7,48 @@ import (
 )
 
 // ============================================================
-// User Entity
+// User & UserProfile Entities
 // ============================================================
 
 type User struct {
-	// --- Identity ---
-	ID       uuid.UUID
-	Email    string
-	Phone    *string
-	UserName string
-	FullName *string
-
-	// --- Security ---
+	ID                  int64
+	UUID                uuid.UUID
+	Email               string
 	PasswordHash        string
 	PasswordChangedAt   time.Time
-	FailedLoginAttempts int32
-	LockedUntil         time.Time
+	EmailVerified       bool
+	EmailVerifiedAt     time.Time
+	Status              string
+	IsBanned            bool
+	BannedReason        *string
+	Role                string
 	LastLoginAt         time.Time
 	LastLoginIP         *string
+	FailedLoginAttempts int32
+	LockedUntil         time.Time
+	IsDeleted           bool
+	DeletedAt           time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
 
-	// --- Verification ---
-	EmailVerified   bool
-	EmailVerifiedAt time.Time
+type UserProfile struct {
+	UserID          int64
+	UserName        string
+	FullName        *string
+	Phone           *string
 	PhoneVerified   bool
 	PhoneVerifiedAt time.Time
-
-	// --- Profile ---
-	AvatarURL    *string
-	Gender       *string
-	BirthDate    time.Time
-	LanguageCode *string
-	Timezone     *string
-
-	// --- Account status ---
-	Status       string
-	IsBanned     bool
-	BannedReason *string
-	Role         string
-
-	// --- Stats ---
-	TotalOrders  int32
-	TotalSpent   float64
-	RewardPoints int64
-
-	// --- Audit ---
-	IsDeleted bool
-	DeletedAt time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	AvatarURL       *string
+	Gender          *string
+	BirthDate       time.Time
+	LanguageCode    *string
+	Timezone        *string
+	TotalOrders     int32
+	TotalSpent      float64
+	RewardPoints    int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // ============================================================
@@ -67,9 +61,6 @@ type RegisterUserRequest struct {
 	UserName string `json:"user_name" binding:"required,min=3,max=254,regex=^[a-zA-Z0-9_]*$"`
 	Phone    string `json:"phone" binding:"omitempty,min=10,max=15"`
 }
-
-// Giới hạn độ dài tối đa của cột có thể ảnh hưởng đến khả năng lập index, giới hạn index key
-// và một số quyết định lưu trữ; kích thước index thực tế phụ thuộc vào dữ liệu thực tế và database engine.
 
 type RegisterUserResponse struct {
 	ID        uuid.UUID `json:"id"`
@@ -132,14 +123,19 @@ type UpsertAvatarResponse struct {
 // Profile
 // ============================================================
 
+type ProfileData struct {
+	UserName  string `json:"user_name,omitempty"`
+	FullName  string `json:"full_name,omitempty"`
+	Phone     string `json:"phone,omitempty"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+}
+
 type UserProfileResponse struct {
-	ID            uuid.UUID `json:"id"`
-	Email         string    `json:"email"`
-	UserName      string    `json:"user_name,omitempty"`
-	Phone         string    `json:"phone,omitempty"`
-	AvatarURL     string    `json:"avatar_url,omitempty"`
-	Role          string    `json:"role"`
-	Status        string    `json:"status"`
-	EmailVerified bool      `json:"email_verified"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID            uuid.UUID   `json:"id"`
+	Email         string      `json:"email"`
+	Role          string      `json:"role"`
+	Status        string      `json:"status"`
+	EmailVerified bool        `json:"email_verified"`
+	Profile       ProfileData `json:"profile"`
+	CreatedAt     time.Time   `json:"created_at"`
 }

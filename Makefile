@@ -1,7 +1,7 @@
 SHELL := bash
 
 MIGRATE_DIR := src/internal/db/migrations
-MIGRATE_URL := postgres://postgres:postgres@localhost:5432/emc_lb?sslmode=disable
+MIGRATE_URL := postgres://postgres:postgres@localhost:5433/emc_lb?sslmode=disable
 
 COMPOSE_FILE := docker/docker-compose.yml
 ENV_FILE     := .env.development
@@ -75,10 +75,10 @@ sqlc:
 	sqlc generate
 
 mock:
-	go run github.com/vektra/mockery/v2@v2.42.1 --all --keeptree --dir=src/internal/repository --output=src/tests/mocks/repository
-	go run github.com/vektra/mockery/v2@v2.42.1 --all --keeptree --dir=src/pkg/storage --output=src/tests/mocks/storage
-	go run github.com/vektra/mockery/v2@v2.42.1 --all --keeptree --dir=src/pkg/mail --output=src/tests/mocks/mail
-	go run github.com/vektra/mockery/v2@v2.42.1 --all --keeptree --dir=src/pkg/cache --output=src/tests/mocks/cache
+	go run github.com/vektra/mockery/v2@latest --all --keeptree --dir=src/internal/repository --output=src/tests/mocks/repository
+	go run github.com/vektra/mockery/v2@latest --all --keeptree --dir=src/pkg/storage --output=src/tests/mocks/storage
+	go run github.com/vektra/mockery/v2@latest --all --keeptree --dir=src/pkg/mail --output=src/tests/mocks/mail
+	go run github.com/vektra/mockery/v2@latest --all --keeptree --dir=src/pkg/cache --output=src/tests/mocks/cache
 
 swag:
 	go run github.com/swaggo/swag/cmd/swag@latest init -g src/cmd/server/main.go -o src/docs

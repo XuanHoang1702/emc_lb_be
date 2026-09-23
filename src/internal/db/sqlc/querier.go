@@ -12,19 +12,20 @@ import (
 
 type Querier interface {
 	AssignPermissionToRole(ctx context.Context, arg AssignPermissionToRoleParams) error
+	CreateCustomerStats(ctx context.Context, userID int64) error
 	CreatePermission(ctx context.Context, arg CreatePermissionParams) (Permission, error)
 	CreateRole(ctx context.Context, arg CreateRoleParams) (Role, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
+	CreateUserProfile(ctx context.Context, arg CreateUserProfileParams) error
 	GetAllRolePermissions(ctx context.Context) ([]GetAllRolePermissionsRow, error)
 	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
-	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error)
-	GetUserIDByID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
-	GetUserProfileByID(ctx context.Context, id uuid.UUID) (GetUserProfileByIDRow, error)
+	GetUserByUUID(ctx context.Context, argUuid uuid.UUID) (GetUserByUUIDRow, error)
+	GetUserIDByUUID(ctx context.Context, argUuid uuid.UUID) (int64, error)
+	GetUserProfileByUUID(ctx context.Context, argUuid uuid.UUID) (GetUserProfileByUUIDRow, error)
 	LockUserAccount(ctx context.Context, arg LockUserAccountParams) error
-	SoftDeleteUserByID(ctx context.Context, id uuid.UUID) error
-	UpdateFailedLoginAttempts(ctx context.Context, id uuid.UUID) error
-	UpdateUserAvatarByEmail(ctx context.Context, arg UpdateUserAvatarByEmailParams) error
-	UpdateUserAvatarByID(ctx context.Context, arg UpdateUserAvatarByIDParams) error
+	SoftDeleteUserByUUID(ctx context.Context, argUuid uuid.UUID) error
+	UpdateFailedLoginAttempts(ctx context.Context, id int64) error
+	UpdateUserAvatarByUUID(ctx context.Context, arg UpdateUserAvatarByUUIDParams) error
 	UpdateUserLoginStats(ctx context.Context, arg UpdateUserLoginStatsParams) error
 	VerifyUserEmail(ctx context.Context, email string) error
 }

@@ -12,6 +12,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type CustomerStat struct {
+	UserID       int64          `json:"user_id"`
+	TotalOrders  int32          `json:"total_orders"`
+	TotalSpent   pgtype.Numeric `json:"total_spent"`
+	RewardPoints int32          `json:"reward_points"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+}
+
 type Permission struct {
 	Code        string    `json:"code"`
 	Name        string    `json:"name"`
@@ -33,6 +42,44 @@ type RolePermission struct {
 }
 
 type User struct {
+	ID                  int64     `json:"id"`
+	Uuid                uuid.UUID `json:"uuid"`
+	Email               string    `json:"email"`
+	PasswordHash        string    `json:"password_hash"`
+	PasswordChangedAt   time.Time `json:"password_changed_at"`
+	EmailVerified       bool      `json:"email_verified"`
+	EmailVerifiedAt     time.Time `json:"email_verified_at"`
+	Status              string    `json:"status"`
+	IsBanned            bool      `json:"is_banned"`
+	BannedReason        *string   `json:"banned_reason"`
+	Role                string    `json:"role"`
+	LastLoginAt         time.Time `json:"last_login_at"`
+	LastLoginIp         *string   `json:"last_login_ip"`
+	FailedLoginAttempts int32     `json:"failed_login_attempts"`
+	LockedUntil         time.Time `json:"locked_until"`
+	IsDeleted           bool      `json:"is_deleted"`
+	DeletedAt           time.Time `json:"deleted_at"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+type UserProfile struct {
+	UserID          int64     `json:"user_id"`
+	FullName        *string   `json:"full_name"`
+	UserName        *string   `json:"user_name"`
+	Phone           *string   `json:"phone"`
+	PhoneVerified   bool      `json:"phone_verified"`
+	PhoneVerifiedAt time.Time `json:"phone_verified_at"`
+	AvatarUrl       *string   `json:"avatar_url"`
+	Gender          *string   `json:"gender"`
+	BirthDate       time.Time `json:"birth_date"`
+	LanguageCode    *string   `json:"language_code"`
+	Timezone        *string   `json:"timezone"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type UsersOld struct {
 	ID                  uuid.UUID      `json:"id"`
 	Email               string         `json:"email"`
 	Phone               *string        `json:"phone"`
