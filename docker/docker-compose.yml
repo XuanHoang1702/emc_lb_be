@@ -13,12 +13,11 @@ services:
     environment:
       TZ: Asia/Ho_Chi_Minh
       PGTZ: Asia/Ho_Chi_Minh
-    ports:
-      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
-      - emc-network
+      - internal-net
+      - monitoring-net
     logging: *default-logging
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
@@ -50,12 +49,11 @@ services:
           chown mongodb:mongodb /tmp/rs-keyfile
         fi
         exec /usr/local/bin/docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /tmp/rs-keyfile
-    ports:
-      - "127.0.0.1:27018:27017"
     volumes:
       - mongodata:/data/db
     networks:
-      - emc-network
+      - internal-net
+      - monitoring-net
     logging: *default-logging
     # Single-node replica set: required for the multi-document transactions
     # used in order creation. The healthcheck initializes the replica set on
@@ -82,12 +80,11 @@ services:
     image: redis:7
     command: [ "sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\"" ]
     env_file: ${ECC_ENV_FILE:-../.env.development}
-    ports:
-      - "127.0.0.1:6380:6379"
     volumes:
       - redisdata:/data
     networks:
-      - emc-network
+      - internal-net
+      - monitoring-net
     logging: *default-logging
     healthcheck:
       test: [ "CMD", "redis-cli", "-a", "$${REDIS_PASSWORD}", "ping" ]
@@ -107,12 +104,10 @@ services:
     env_file: ${ECC_ENV_FILE:-../.env.development}
     environment:
       - AWS_DEFAULT_REGION=$${AWS_REGION}
-    ports:
-      - "127.0.0.1:4566:4566"
     volumes:
       - localstackdata:/var/lib/localstack
     networks:
-      - emc-network
+      - internal-net
     logging: *default-logging
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health || exit 1" ]
@@ -149,7 +144,9 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - emc-network
+      - public-net
+      - internal-net
+      - monitoring-net
     logging: *default-logging
     deploy:
       resources:
@@ -180,7 +177,9 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - emc-network
+      - public-net
+      - internal-net
+      - monitoring-net
     logging: *default-logging
     deploy:
       resources:
@@ -211,7 +210,9 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - emc-network
+      - public-net
+      - internal-net
+      - monitoring-net
     logging: *default-logging
     deploy:
       resources:
@@ -240,7 +241,8 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - emc-network
+      - internal-net
+      - monitoring-net
     logging: *default-logging
     deploy:
       resources:
@@ -253,14 +255,16 @@ services:
     image: nginx:alpine
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       - emc_api_node_1
       - emc_api_node_2
       - emc_api_node_3
     networks:
-      - emc-network
+      - public-net
     logging: *default-logging
     deploy:
       resources:
@@ -271,13 +275,11 @@ services:
   prometheus:
     container_name: emc_lb_prometheus
     image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     networks:
-      - emc-network
+      - monitoring-net
     logging: *default-logging
     deploy:
       resources:
@@ -288,14 +290,12 @@ services:
   grafana:
     container_name: emc_lb_grafana
     image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
       - grafana_data:/var/lib/grafana
     networks:
-      - emc-network
+      - monitoring-net
     logging: *default-logging
     depends_on:
       - prometheus
@@ -311,13 +311,11 @@ services:
     user: "root"
     privileged: true
     entrypoint: ["telegraf"]
-    ports:
-      - "9273:9273"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
     networks:
-      - emc-network
+      - monitoring-net
     logging: *default-logging
     deploy:
       resources:
@@ -332,7 +330,7 @@ services:
     environment:
       DATA_SOURCE_NAME: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
     networks:
-      - emc-network
+      - monitoring-net
     logging: *default-logging
     depends_on:
       - postgres
@@ -351,7 +349,7 @@ services:
       - '-redis.password=${REDIS_PASSWORD}'
       - '-check-keys=asynq:*:pending,asynq:*:active,asynq:*:retry,asynq:*:archived,asynq:*:completed'
     networks:
-      - emc-network
+      - monitoring-net
     logging: *default-logging
     depends_on:
       - redis
@@ -374,7 +372,7 @@ services:
       - /sys:/host/sys:ro
       - /:/rootfs:ro
     networks:
-      - emc-network
+      - monitoring-net
     logging: *default-logging
     deploy:
       resources:
@@ -391,5 +389,9 @@ volumes:
   grafana_data:
 
 networks:
-  emc-network:
+  public-net:
+    driver: bridge
+  internal-net:
+    driver: bridge
+  monitoring-net:
     driver: bridge
