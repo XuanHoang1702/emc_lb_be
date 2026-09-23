@@ -223,7 +223,7 @@ func sampleProduct(id string, shopID string, price float64, stock int64) entitie
 }
 
 func TestCreateOrder_EmptyItems(t *testing.T) {
-	svc := service.NewOrderService(newStubOrderRepo(), newStubProductRepo(), &stubCouponSvc{}, nil, nil, nil)
+	svc := service.NewOrderService(newStubOrderRepo(), newStubProductRepo(), &stubCouponSvc{}, nil, nil, nil, nil)
 
 	_, err := svc.CreateOrder(context.Background(), "user-1", entities.CreateOrderRequest{})
 	if err == nil {
@@ -244,7 +244,7 @@ func TestCreateOrder_Success(t *testing.T) {
 	orderRepo := newStubOrderRepo()
 
 	// No redis client → fallback to DB stock check (AllowBackorder=false by default)
-	svc := service.NewOrderService(orderRepo, productRepo, &stubCouponSvc{}, nil, nil, nil)
+	svc := service.NewOrderService(orderRepo, productRepo, &stubCouponSvc{}, nil, nil, nil, nil)
 
 	orders, err := svc.CreateOrder(context.Background(), "user-1", entities.CreateOrderRequest{
 		Items: []entities.OrderItem{{ProductID: "p1", Quantity: 2}},
@@ -265,7 +265,7 @@ func TestCreateOrder_InsufficientStock(t *testing.T) {
 	productRepo.products["p1"] = sampleProduct("p1", "shop-A", 100, 1) // only 1 in stock
 	orderRepo := newStubOrderRepo()
 
-	svc := service.NewOrderService(orderRepo, productRepo, &stubCouponSvc{}, nil, nil, nil)
+	svc := service.NewOrderService(orderRepo, productRepo, &stubCouponSvc{}, nil, nil, nil, nil)
 
 	_, err := svc.CreateOrder(context.Background(), "user-1", entities.CreateOrderRequest{
 		Items: []entities.OrderItem{{ProductID: "p1", Quantity: 5}},
@@ -290,7 +290,7 @@ func TestCreateOrder_WithPercentageCoupon(t *testing.T) {
 		},
 	}
 
-	svc := service.NewOrderService(orderRepo, productRepo, couponSvc, nil, nil, nil)
+	svc := service.NewOrderService(orderRepo, productRepo, couponSvc, nil, nil, nil, nil)
 
 	orders, err := svc.CreateOrder(context.Background(), "user-1", entities.CreateOrderRequest{
 		Items:      []entities.OrderItem{{ProductID: "p1", Quantity: 1}},
@@ -326,7 +326,7 @@ func TestCreateOrder_WithFixedCoupon(t *testing.T) {
 		},
 	}
 
-	svc := service.NewOrderService(orderRepo, productRepo, couponSvc, nil, nil, nil)
+	svc := service.NewOrderService(orderRepo, productRepo, couponSvc, nil, nil, nil, nil)
 
 	orders, err := svc.CreateOrder(context.Background(), "user-1", entities.CreateOrderRequest{
 		Items:      []entities.OrderItem{{ProductID: "p1", Quantity: 1}},
@@ -349,7 +349,7 @@ func TestCreateOrder_MultiShopSplit(t *testing.T) {
 	productRepo.products["p2"] = sampleProduct("p2", "shop-B", 200, 10)
 	orderRepo := newStubOrderRepo()
 
-	svc := service.NewOrderService(orderRepo, productRepo, &stubCouponSvc{}, nil, nil, nil)
+	svc := service.NewOrderService(orderRepo, productRepo, &stubCouponSvc{}, nil, nil, nil, nil)
 
 	orders, err := svc.CreateOrder(context.Background(), "user-1", entities.CreateOrderRequest{
 		Items: []entities.OrderItem{
@@ -371,7 +371,7 @@ func TestCreateOrder_InvalidatesProductCache(t *testing.T) {
 	orderRepo := newStubOrderRepo()
 	productCache := &stubProductCache{}
 
-	svc := service.NewOrderService(orderRepo, productRepo, &stubCouponSvc{}, nil, productCache, nil)
+	svc := service.NewOrderService(orderRepo, productRepo, &stubCouponSvc{}, nil, productCache, nil, nil)
 
 	_, err := svc.CreateOrder(context.Background(), "user-1", entities.CreateOrderRequest{
 		Items: []entities.OrderItem{{ProductID: "p1", Quantity: 1}},
@@ -391,7 +391,7 @@ func TestUpdateOrderStatus_InvalidStatus(t *testing.T) {
 		Status: "pending",
 	})
 
-	svc := service.NewOrderService(orderRepo, newStubProductRepo(), &stubCouponSvc{}, nil, nil, nil)
+	svc := service.NewOrderService(orderRepo, newStubProductRepo(), &stubCouponSvc{}, nil, nil, nil, nil)
 
 	err := svc.UpdateOrderStatus(context.Background(), "order-1", "invalid_status")
 	if err == nil {
@@ -406,7 +406,7 @@ func TestUpdateOrderStatus_AlreadyCancelled(t *testing.T) {
 		Status: "cancelled",
 	})
 
-	svc := service.NewOrderService(orderRepo, newStubProductRepo(), &stubCouponSvc{}, nil, nil, nil)
+	svc := service.NewOrderService(orderRepo, newStubProductRepo(), &stubCouponSvc{}, nil, nil, nil, nil)
 
 	err := svc.UpdateOrderStatus(context.Background(), "order-1", "processing")
 	if err == nil {
@@ -425,7 +425,7 @@ func TestUpdateOrderStatus_CancelledRestoresStock(t *testing.T) {
 	})
 
 	productCache := &stubProductCache{}
-	svc := service.NewOrderService(orderRepo, productRepo, &stubCouponSvc{}, nil, productCache, nil)
+	svc := service.NewOrderService(orderRepo, productRepo, &stubCouponSvc{}, nil, productCache, nil, nil)
 
 	err := svc.UpdateOrderStatus(context.Background(), "order-1", "cancelled")
 	if err != nil {

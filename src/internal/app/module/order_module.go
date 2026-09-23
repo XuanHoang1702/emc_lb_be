@@ -9,6 +9,7 @@ import (
 	route "emc_lb/src/internal/routes"
 	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/cache"
+	"emc_lb/src/pkg/worker"
 
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -19,7 +20,7 @@ type OrderModule struct {
 	orderService service.OrderService
 }
 
-func NewOrderModule(database *mongo.Database, mongoClient *mongo.Client, couponSvc service.CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore) *OrderModule {
+func NewOrderModule(database *mongo.Database, mongoClient *mongo.Client, couponSvc service.CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore, taskDistributor worker.TaskDistributor) *OrderModule {
 	orderRepository := repository.NewOrderRepository(database.Collection("orders"))
 	productRepository := repository.NewProductRepository(database.Collection("products"))
 
@@ -28,7 +29,8 @@ func NewOrderModule(database *mongo.Database, mongoClient *mongo.Client, couponS
 		log.Printf("warning: failed to ensure order indexes: %v", err)
 	}
 
-	orderService := service.NewOrderService(orderRepository, productRepository, couponSvc, redisClient, productCache, mongoClient)
+	inventoryService := service.NewInventoryService(redisClient)
+	orderService := service.NewOrderService(orderRepository, productRepository, couponSvc, inventoryService, productCache, mongoClient, taskDistributor)
 	orderHandler := handler.NewOrderHandler(orderService)
 	orderRoute := route.NewOrderRoute(orderHandler)
 

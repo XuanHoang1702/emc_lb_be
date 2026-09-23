@@ -15,9 +15,10 @@ import (
 	"emc_lb/src/pkg/mapping"
 	"emc_lb/src/pkg/res"
 	"emc_lb/src/pkg/utils"
+	"emc_lb/src/pkg/worker"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
+	"github.com/hibiken/asynq"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -34,19 +35,21 @@ type orderService struct {
 	orderRepository   repository.OrderRepository
 	productRepository repository.ProductRepository
 	couponService     CouponService
-	redisClient       *redis.Client
+	inventoryService  InventoryService
 	productCache      cache.ProductCacheStore
 	mongoClient       *mongo.Client
+	taskDistributor   worker.TaskDistributor
 }
 
-func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, couponSvc CouponService, redisClient *redis.Client, productCache cache.ProductCacheStore, mongoClient *mongo.Client) OrderService {
+func NewOrderService(orderRepository repository.OrderRepository, productRepository repository.ProductRepository, couponSvc CouponService, inventoryService InventoryService, productCache cache.ProductCacheStore, mongoClient *mongo.Client, taskDistributor worker.TaskDistributor) OrderService {
 	return &orderService{
 		orderRepository:   orderRepository,
 		productRepository: productRepository,
 		couponService:     couponSvc,
-		redisClient:       redisClient,
+		inventoryService:  inventoryService,
 		productCache:      productCache,
 		mongoClient:       mongoClient,
+		taskDistributor:   taskDistributor,
 	}
 }
 
@@ -78,18 +81,44 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 				}
 			}
 
-			// Atomic stock deduction: check-and-decrement in one MongoDB operation.
+			// Atomic stock deduction: check-and-decrement.
 			// For backorder products, use UpdateStock (no precondition).
 			if product.AllowBackorder {
 				if err := s.productRepository.UpdateStock(opCtx, item.ProductID, -item.Quantity, item.Quantity); err != nil {
 					return res.WrapError(err, "Failed to update stock in DB", erres.CommonInternal)
 				}
 			} else {
-				if err := s.productRepository.DeductStock(opCtx, item.ProductID, item.Quantity); err != nil {
-					return &res.AppError{
-						Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
-						Code:       erres.CommonBadRequest,
-						StatusCode: http.StatusBadRequest,
+				if s.inventoryService != nil {
+					ok, err := s.inventoryService.ReserveStock(opCtx, item.ProductID, item.Quantity)
+					if err != nil {
+						// Fallback to MongoDB if Redis fails or stock not cached
+						if dbErr := s.productRepository.DeductStock(opCtx, item.ProductID, item.Quantity); dbErr != nil {
+							return &res.AppError{
+								Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
+								Code:       erres.CommonBadRequest,
+								StatusCode: http.StatusBadRequest,
+							}
+						}
+					} else if !ok {
+						return &res.AppError{
+							Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
+							Code:       erres.CommonBadRequest,
+							StatusCode: http.StatusBadRequest,
+						}
+					} else {
+						// Reserved in Redis successfully, now deduct in MongoDB
+						if dbErr := s.productRepository.DeductStock(opCtx, item.ProductID, item.Quantity); dbErr != nil {
+							_ = s.inventoryService.RestoreStock(context.Background(), item.ProductID, item.Quantity)
+							return res.WrapError(dbErr, "Failed to deduct stock in DB", erres.CommonInternal)
+						}
+					}
+				} else {
+					if err := s.productRepository.DeductStock(opCtx, item.ProductID, item.Quantity); err != nil {
+						return &res.AppError{
+							Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
+							Code:       erres.CommonBadRequest,
+							StatusCode: http.StatusBadRequest,
+						}
 					}
 				}
 			}
@@ -180,6 +209,16 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 			createdOrder, err := s.orderRepository.Create(opCtx, order)
 			if err != nil {
 				return res.WrapError(err, "Can not create order", erres.CommonInternal)
+			}
+
+			// Schedule order cancellation (15 minutes TTL)
+			if s.taskDistributor != nil {
+				payload := &worker.PayloadCancelExpiredOrder{
+					OrderID: createdOrder.ID,
+				}
+				if enqueueErr := s.taskDistributor.DistributeTaskCancelExpiredOrder(ctx, payload, asynq.ProcessIn(15*time.Minute)); enqueueErr != nil {
+					logs.WithContext(ctx).Error("failed to enqueue cancel expired order task", "order_id", createdOrder.ID, "error", enqueueErr)
+				}
 			}
 
 			createdOrders = append(createdOrders, mapping.ToOrderResponse(createdOrder))
@@ -302,6 +341,8 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, id string, status 
 					"error", restoreErr,
 				)
 				restoreErrors = append(restoreErrors, item.ProductID)
+			} else if s.inventoryService != nil {
+				_ = s.inventoryService.RestoreStock(context.Background(), item.ProductID, item.Quantity)
 			}
 		}
 		if s.productCache != nil {

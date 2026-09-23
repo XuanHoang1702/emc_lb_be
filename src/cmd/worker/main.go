@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"emc_lb/src/internal/app/module"
 	"emc_lb/src/internal/db/sqlc"
 	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/logs"
@@ -39,12 +40,31 @@ func main() {
 
 	mailer := mail.NewMailer()
 
+	mongoClient, err := utils.NewMongoClientFromConfig(context.Background(), &cfg.MongoDB)
+	if err != nil {
+		logger.Error("failed to create mongo client", "error", err)
+		os.Exit(1)
+	}
+	defer mongoClient.Disconnect(context.Background())
+	mongoDB := mongoClient.Database(cfg.MongoDB.Database)
+
+	redisClient, err := utils.NewRedisClientFromConfig(&cfg.Redis)
+	if err != nil {
+		logger.Error("failed to create redis client", "error", err)
+		os.Exit(1)
+	}
+	defer redisClient.Close()
+
 	redisOpt := asynq.RedisClientOpt{
 		Addr:     cfg.Redis.Host + ":" + cfg.Redis.Port,
 		Password: cfg.Redis.Password,
 	}
 
-	processor := worker.NewRedisTaskProcessor(redisOpt, mailer)
+	couponMod := module.NewCouponModule(mongoDB, redisClient)
+	productMod := module.NewProductModule(mongoDB, redisClient)
+	orderMod := module.NewOrderModule(mongoDB, mongoClient, couponMod.ServiceInstance(), redisClient, productMod.CacheStore(), nil)
+
+	processor := worker.NewRedisTaskProcessor(redisOpt, mailer, orderMod.Service())
 
 	err = processor.Start()
 	if err != nil {

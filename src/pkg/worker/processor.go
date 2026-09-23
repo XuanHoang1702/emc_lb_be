@@ -19,12 +19,17 @@ type TaskProcessor interface {
 	Shutdown()
 }
 
-type RedisTaskProcessor struct {
-	server *asynq.Server
-	mailer mail.Mailer
+type OrderManager interface {
+	UpdateOrderStatus(ctx context.Context, id string, status string) error
 }
 
-func NewRedisTaskProcessor(redisOpt asynq.RedisClientOpt, mailer mail.Mailer) TaskProcessor {
+type RedisTaskProcessor struct {
+	server       *asynq.Server
+	mailer       mail.Mailer
+	orderManager OrderManager
+}
+
+func NewRedisTaskProcessor(redisOpt asynq.RedisClientOpt, mailer mail.Mailer, orderManager OrderManager) TaskProcessor {
 	server := asynq.NewServer(
 		redisOpt,
 		asynq.Config{
@@ -43,8 +48,9 @@ func NewRedisTaskProcessor(redisOpt asynq.RedisClientOpt, mailer mail.Mailer) Ta
 	)
 
 	return &RedisTaskProcessor{
-		server: server,
-		mailer: mailer,
+		server:       server,
+		mailer:       mailer,
+		orderManager: orderManager,
 	}
 }
 
@@ -52,6 +58,7 @@ func (processor *RedisTaskProcessor) Start() error {
 	mux := asynq.NewServeMux()
 
 	mux.HandleFunc(TaskSendVerifyEmail, processor.ProcessTaskSendVerifyEmail)
+	mux.HandleFunc(TaskCancelExpiredOrder, processor.ProcessTaskCancelExpiredOrder)
 
 	return processor.server.Start(mux)
 }
