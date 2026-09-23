@@ -37,7 +37,7 @@ SELECT
     role,
     status,
     is_banned,
-    locked_until,
+    COALESCE(locked_until, '0001-01-01 00:00:00Z'::timestamptz) AS locked_until,
     failed_login_attempts
 FROM users
 WHERE email = $1 AND is_deleted = false

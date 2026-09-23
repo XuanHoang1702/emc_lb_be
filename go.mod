@@ -1,6 +1,6 @@
 module emc_lb
 
-go 1.25.13
+go 1.25.12
 
 require (
 	github.com/alicebob/miniredis/v2 v2.39.0
