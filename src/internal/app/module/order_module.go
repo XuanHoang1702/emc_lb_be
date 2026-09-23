@@ -30,7 +30,8 @@ func NewOrderModule(database *mongo.Database, mongoClient *mongo.Client, couponS
 	}
 
 	inventoryService := service.NewInventoryService(redisClient)
-	orderService := service.NewOrderService(orderRepository, productRepository, couponSvc, inventoryService, productCache, mongoClient, taskDistributor)
+	cartRepository := repository.NewCartRepository(database.Collection("carts"))
+	orderService := service.NewOrderService(orderRepository, productRepository, cartRepository, couponSvc, inventoryService, productCache, mongoClient, taskDistributor)
 	orderHandler := handler.NewOrderHandler(orderService)
 	orderRoute := route.NewOrderRoute(orderHandler)
 

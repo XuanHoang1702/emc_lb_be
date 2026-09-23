@@ -17,6 +17,7 @@ type OrderRepository interface {
 	GetByID(context.Context, string) (entities.Order, error)
 	GetByInvoiceNumber(context.Context, string) (entities.Order, error)
 	UpdateStatus(context.Context, string, string) error
+	UpdateStatusAtomic(context.Context, string, string, string) error
 	UpdatePaymentStatus(context.Context, string, string) error
 	EnsureIndexes(context.Context) error
 }
@@ -131,11 +132,52 @@ func (r *orderRepository) UpdatePaymentStatus(ctx context.Context, id string, pa
 	return err
 }
 
-func (r *orderRepository) EnsureIndexes(ctx context.Context) error {
-	_, err := r.collection.Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "invoice_number", Value: 1}},
-		Options: options.Index().SetUnique(true),
+func (r *orderRepository) UpdateStatusAtomic(ctx context.Context, id string, expectedCurrent string, newStatus string) error {
+	objID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+	result, err := r.collection.UpdateOne(ctx, bson.M{
+		"_id":    objID,
+		"status": expectedCurrent,
+	}, bson.M{
+		"$set": bson.M{
+			"status":     newStatus,
+			"updated_at": time.Now().UTC(),
+		},
 	})
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
+}
+
+func (r *orderRepository) EnsureIndexes(ctx context.Context) error {
+	indexes := []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "invoice_number", Value: 1}},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{{Key: "user_id", Value: 1}},
+		},
+		{
+			Keys: bson.D{{Key: "shop_id", Value: 1}},
+		},
+		{
+			Keys: bson.D{{Key: "status", Value: 1}},
+		},
+		{
+			Keys: bson.D{{Key: "payment_group_id", Value: 1}},
+		},
+		{
+			Keys: bson.D{{Key: "created_at", Value: -1}},
+		},
+	}
+	_, err := r.collection.Indexes().CreateMany(ctx, indexes)
 	return err
 }
 
@@ -166,9 +208,13 @@ type orderDoc struct {
 }
 
 type orderItemDoc struct {
-	ProductID string  `bson:"product_id"`
-	Quantity  int64   `bson:"quantity"`
-	Price     float64 `bson:"price"`
+	ProductID   string  `bson:"product_id"`
+	ProductName string  `bson:"product_name"` // Snapshot
+	SKU         string  `bson:"sku"`          // Snapshot
+	Thumbnail   string  `bson:"thumbnail"`    // Snapshot
+	Quantity    int64   `bson:"quantity"`
+	Price       float64 `bson:"price"`
+	SubTotal    float64 `bson:"sub_total"`
 }
 
 func toOrderDoc(o entities.Order) orderDoc {
@@ -200,9 +246,13 @@ func toOrderDoc(o entities.Order) orderDoc {
 	items := make([]orderItemDoc, len(o.Items))
 	for i, item := range o.Items {
 		items[i] = orderItemDoc{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			Price:     item.Price,
+			ProductID:   item.ProductID,
+			ProductName: item.ProductName,
+			SKU:         item.SKU,
+			Thumbnail:   item.Thumbnail,
+			Quantity:    item.Quantity,
+			Price:       item.Price,
+			SubTotal:    item.SubTotal,
 		}
 	}
 	doc.Items = items
@@ -214,9 +264,13 @@ func toOrderEntity(doc orderDoc) entities.Order {
 	items := make([]entities.OrderItem, len(doc.Items))
 	for i, item := range doc.Items {
 		items[i] = entities.OrderItem{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			Price:     item.Price,
+			ProductID:   item.ProductID,
+			ProductName: item.ProductName,
+			SKU:         item.SKU,
+			Thumbnail:   item.Thumbnail,
+			Quantity:    item.Quantity,
+			Price:       item.Price,
+			SubTotal:    item.SubTotal,
 		}
 	}
 

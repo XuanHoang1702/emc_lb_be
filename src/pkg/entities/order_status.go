@@ -7,7 +7,17 @@ const (
 	OrderStatusShipped    = "shipped"
 	OrderStatusDelivered  = "delivered"
 	OrderStatusCancelled  = "cancelled"
+
+	PaymentStatusUnpaid   = "unpaid"
+	PaymentStatusPaid     = "paid"
+	PaymentStatusFailed   = "failed"
+	PaymentStatusRefunded = "refunded"
 )
+
+// IsTerminalStatus returns true if the order status is a final state
+func IsTerminalStatus(status string) bool {
+	return status == OrderStatusDelivered || status == OrderStatusCancelled
+}
 
 // ValidTransitions defines allowed order status transitions.
 // Terminal states (delivered, cancelled) have no valid next states.

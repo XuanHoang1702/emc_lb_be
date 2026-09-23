@@ -3,9 +3,13 @@ package entities
 import "time"
 
 type OrderItem struct {
-	ProductID string  `json:"product_id" binding:"required"`
-	Quantity  int64   `json:"quantity" binding:"required,gt=0"`
-	Price     float64 `json:"price"` // Captured at the time of order
+	ProductID   string  `json:"product_id" binding:"required"`
+	ProductName string  `json:"product_name"` // Snapshot
+	SKU         string  `json:"sku"`          // Snapshot
+	Thumbnail   string  `json:"thumbnail"`    // Snapshot
+	Quantity    int64   `json:"quantity" binding:"required,gt=0"`
+	Price       float64 `json:"price"` // Captured at the time of order
+	SubTotal    float64 `json:"sub_total"`
 }
 
 type Order struct {
@@ -57,4 +61,21 @@ type OrderResponse struct {
 	ContactPhone    string      `json:"contact_phone"`
 	CreatedAt       time.Time   `json:"created_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`
+}
+
+type CheckoutItemRequest struct {
+	ProductID string `json:"product_id" binding:"required"`
+	Quantity  int64  `json:"quantity" binding:"required,gt=0"`
+}
+
+type CheckoutRequest struct {
+	Items           []CheckoutItemRequest `json:"items" binding:"required,min=1,dive"`
+	CouponCode      string                `json:"coupon_code"`
+	PaymentMethod   string                `json:"payment_method" binding:"required"`
+	ShippingAddress string                `json:"shipping_address" binding:"required"`
+	ContactPhone    string                `json:"contact_phone" binding:"required"`
+}
+
+type CancelOrderRequest struct {
+	Reason string `json:"reason" binding:"required"`
 }

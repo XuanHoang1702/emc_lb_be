@@ -56,6 +56,13 @@ func (s *stubPaymentOrderSvc) MarkAsPaidByInvoice(_ context.Context, invoiceNumb
 func (s *stubPaymentOrderSvc) UpdateOrderStatus(_ context.Context, _ string, _ string) error {
 	return nil
 }
+func (s *stubPaymentOrderSvc) CreateOrderFromCheckout(ctx context.Context, userID string, req entities.CheckoutRequest) ([]entities.OrderResponse, error) {
+	return nil, nil
+}
+func (s *stubPaymentOrderSvc) CancelOrder(ctx context.Context, userID string, orderID string) error {
+	return nil
+}
+
 
 func TestProcessIPN_OrderPaid(t *testing.T) {
 	var markedInvoice string
