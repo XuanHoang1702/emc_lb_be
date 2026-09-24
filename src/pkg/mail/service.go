@@ -16,6 +16,7 @@ var templateFS embed.FS
 
 type Mailer interface {
 	SendEmailVerificationOTP(context.Context, string, string, string, int) error
+	SendPasswordResetOTP(context.Context, string, string, string, int) error
 	SendOrderPaymentSuccessEmail(ctx context.Context, recipientEmail string, userName string, invoiceNumber string, amountPaid float64) error
 }
 
@@ -30,6 +31,12 @@ type SMTPMailer struct {
 type noopMailer struct{}
 
 type verificationOTPEmailData struct {
+	UserName         string
+	OTP              string
+	ExpiresInMinutes int
+}
+
+type passwordResetOTPEmailData struct {
 	UserName         string
 	OTP              string
 	ExpiresInMinutes int
@@ -87,6 +94,10 @@ func (noopMailer) SendEmailVerificationOTP(context.Context, string, string, stri
 	return nil
 }
 
+func (noopMailer) SendPasswordResetOTP(context.Context, string, string, string, int) error {
+	return nil
+}
+
 func (noopMailer) SendOrderPaymentSuccessEmail(context.Context, string, string, string, float64) error {
 	return nil
 }
@@ -109,8 +120,40 @@ func (m *SMTPMailer) SendEmailVerificationOTP(_ context.Context, recipientEmail 
 	return smtp.SendMail(m.address, m.auth, m.fromEmail, []string{recipientEmail}, []byte(message))
 }
 
+func (m *SMTPMailer) SendPasswordResetOTP(_ context.Context, recipientEmail string, userName string, otp string, expiresInMinutes int) error {
+	if m == nil || !m.enabled {
+		return nil
+	}
+
+	htmlBody, err := renderPasswordResetOTPEmail(passwordResetOTPEmailData{
+		UserName:         userName,
+		OTP:              otp,
+		ExpiresInMinutes: expiresInMinutes,
+	})
+	if err != nil {
+		return err
+	}
+
+	message := buildHTMLMessage(m.fromName, m.fromEmail, recipientEmail, "Reset your password", htmlBody)
+	return smtp.SendMail(m.address, m.auth, m.fromEmail, []string{recipientEmail}, []byte(message))
+}
+
 func renderVerificationOTPEmail(data verificationOTPEmailData) (string, error) {
 	tpl, err := template.ParseFS(templateFS, "templates/email_verification_otp.html")
+	if err != nil {
+		return "", err
+	}
+
+	var buffer bytes.Buffer
+	if err := tpl.Execute(&buffer, data); err != nil {
+		return "", err
+	}
+
+	return buffer.String(), nil
+}
+
+func renderPasswordResetOTPEmail(data passwordResetOTPEmailData) (string, error) {
+	tpl, err := template.ParseFS(templateFS, "templates/password_reset_otp.html")
 	if err != nil {
 		return "", err
 	}

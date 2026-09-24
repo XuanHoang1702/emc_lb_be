@@ -321,6 +321,25 @@ func (q *Queries) UpdateUserLoginStats(ctx context.Context, arg UpdateUserLoginS
 	return err
 }
 
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE users
+SET
+    password_hash = $2,
+    password_changed_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1 AND is_deleted = false
+`
+
+type UpdateUserPasswordParams struct {
+	ID           int64  `json:"id"`
+	PasswordHash string `json:"password_hash"`
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.PasswordHash)
+	return err
+}
+
 const verifyUserEmail = `-- name: VerifyUserEmail :exec
 UPDATE users
 SET

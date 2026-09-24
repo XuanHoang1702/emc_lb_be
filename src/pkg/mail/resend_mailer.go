@@ -51,6 +51,31 @@ func (m *ResendMailer) SendEmailVerificationOTP(_ context.Context, recipientEmai
 	return nil
 }
 
+func (m *ResendMailer) SendPasswordResetOTP(_ context.Context, recipientEmail string, userName string, otp string, expiresInMinutes int) error {
+	htmlBody, err := renderPasswordResetOTPEmail(passwordResetOTPEmailData{
+		UserName:         userName,
+		OTP:              otp,
+		ExpiresInMinutes: expiresInMinutes,
+	})
+	if err != nil {
+		return fmt.Errorf("render email template: %w", err)
+	}
+
+	params := &resend.SendEmailRequest{
+		From:    m.from,
+		To:      []string{recipientEmail},
+		Subject: "Reset your password",
+		Html:    htmlBody,
+	}
+
+	_, err = m.client.Emails.Send(params)
+	if err != nil {
+		return fmt.Errorf("resend send email: %w", err)
+	}
+
+	return nil
+}
+
 func (m *ResendMailer) SendOrderPaymentSuccessEmail(_ context.Context, recipientEmail string, userName string, invoiceNumber string, amountPaid float64) error {
 	htmlBody, err := renderPaymentSuccessEmail(paymentSuccessEmailData{
 		CustomerName:  userName,

@@ -36,6 +36,10 @@ type UserService interface {
 	Delete(context.Context, uuid.UUID) error
 	UpsertAvatar(context.Context, entities.UpsertAvatarRequest) (entities.UpsertAvatarResponse, error)
 	GetProfile(context.Context, uuid.UUID) (entities.UserProfileResponse, error)
+	ChangePassword(context.Context, uuid.UUID, entities.ChangePasswordRequest) error
+	AdminChangePassword(context.Context, uuid.UUID, entities.AdminChangePasswordRequest) error
+	ForgotPassword(context.Context, entities.ForgotPasswordRequest) error
+	ResetPassword(context.Context, entities.ResetPasswordRequest) error
 }
 
 type userService struct {
@@ -482,4 +486,171 @@ func (s *userService) GetProfile(ctx context.Context, userID uuid.UUID) (entitie
 			AvatarURL: avatarURL,
 		},
 	}, nil
+}
+
+func (s *userService) ChangePassword(ctx context.Context, userID uuid.UUID, req entities.ChangePasswordRequest) error {
+	normalizedRequest := req
+	utils.NormalizeStrings(&normalizedRequest.OldPassword, &normalizedRequest.NewPassword)
+
+	user, err := s.userRepository.GetByUUID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &res.AppError{
+				Message:    "User not found",
+				Code:       erres.UserNotFound,
+				StatusCode: http.StatusNotFound,
+			}
+		}
+		return res.WrapError(err, "Can not change password now", erres.UserGetFailed)
+	}
+
+	if err = utils.CheckPassword(normalizedRequest.OldPassword, user.PasswordHash, s.cfg.App.SystemSecret); err != nil {
+		return &res.AppError{
+			Message:    "Invalid old password",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
+	newPasswordHash, err := utils.HashPassword(normalizedRequest.NewPassword, s.cfg.App.SystemSecret)
+	if err != nil {
+		return res.WrapError(err, "Can not change password now", erres.CommonInternal)
+	}
+
+	if err := s.userRepository.UpdatePassword(ctx, sqlc.UpdateUserPasswordParams{
+		ID:           user.ID,
+		PasswordHash: newPasswordHash,
+	}); err != nil {
+		return res.WrapError(err, "Can not change password now", erres.UserUpdateFailed)
+	}
+
+	// Optionally invalidate all refresh tokens for this user here to force re-login on all devices
+	// _ = s.refreshTokenStore.DeleteAllForUser(ctx, userID.String())
+
+	return nil
+}
+
+func (s *userService) AdminChangePassword(ctx context.Context, targetUserUUID uuid.UUID, req entities.AdminChangePasswordRequest) error {
+	normalizedRequest := req
+	utils.NormalizeStrings(&normalizedRequest.NewPassword)
+
+	user, err := s.userRepository.GetByUUID(ctx, targetUserUUID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &res.AppError{
+				Message:    "User not found",
+				Code:       erres.UserNotFound,
+				StatusCode: http.StatusNotFound,
+			}
+		}
+		return res.WrapError(err, "Can not change password now", erres.UserGetFailed)
+	}
+
+	newPasswordHash, err := utils.HashPassword(normalizedRequest.NewPassword, s.cfg.App.SystemSecret)
+	if err != nil {
+		return res.WrapError(err, "Can not change password now", erres.CommonInternal)
+	}
+
+	if err := s.userRepository.UpdatePassword(ctx, sqlc.UpdateUserPasswordParams{
+		ID:           user.ID,
+		PasswordHash: newPasswordHash,
+	}); err != nil {
+		return res.WrapError(err, "Can not change password now", erres.UserUpdateFailed)
+	}
+
+	return nil
+}
+
+func (s *userService) ForgotPassword(ctx context.Context, req entities.ForgotPasswordRequest) error {
+	normalizedRequest := req
+	utils.NormalizeEmail(&normalizedRequest.Email)
+
+	user, err := s.userRepository.GetByEmail(ctx, normalizedRequest.Email)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Do not leak if user exists
+			return nil
+		}
+		return res.WrapError(err, "Can not process forgot password now", erres.UserGetFailed)
+	}
+
+	otp, err := utils.GenerateOTP(6)
+	if err != nil {
+		return res.WrapError(err, "Can not generate OTP now", erres.CommonInternal)
+	}
+
+	otpTTL := utils.GetDurationFromEnv("EMAIL_OTP_TTL", 10*time.Minute)
+	// We prefix the email so it doesn't conflict with registration OTP
+	resetKey := "pwd_reset:" + normalizedRequest.Email
+	if err := s.emailOTPStore.Save(ctx, resetKey, otp, otpTTL); err != nil {
+		return res.WrapError(err, "Can not save OTP now", erres.CommonInternal)
+	}
+
+	profile, _ := s.userRepository.GetUserProfileByUUID(ctx, user.UUID)
+	userName := normalizedRequest.Email
+	if profile.UserName != nil {
+		userName = *profile.UserName
+	}
+
+	payload := &worker.PayloadSendPasswordResetEmail{
+		Email:    normalizedRequest.Email,
+		UserName: userName,
+		OTP:      otp,
+		TTL:      int(otpTTL.Minutes()),
+	}
+
+	if err := s.taskDistributor.DistributeTaskSendPasswordResetEmail(ctx, payload); err != nil {
+		logs.LogError("worker", "enqueue_password_reset_email_task_failed", err, map[string]any{
+			"email": normalizedRequest.Email,
+		})
+	}
+
+	return nil
+}
+
+func (s *userService) ResetPassword(ctx context.Context, req entities.ResetPasswordRequest) error {
+	normalizedRequest := req
+	utils.NormalizeEmail(&normalizedRequest.Email)
+	utils.NormalizeStrings(&normalizedRequest.OTP, &normalizedRequest.NewPassword)
+
+	resetKey := "pwd_reset:" + normalizedRequest.Email
+	savedOTP, err := s.emailOTPStore.Get(ctx, resetKey)
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return &res.AppError{
+				Message:    "Invalid or expired otp",
+				Code:       erres.UserUnauthorized,
+				StatusCode: http.StatusUnauthorized,
+			}
+		}
+		return res.WrapError(err, "Can not verify OTP now", erres.CommonInternal)
+	}
+
+	if savedOTP != normalizedRequest.OTP {
+		return &res.AppError{
+			Message:    "Invalid or expired otp",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		}
+	}
+
+	user, err := s.userRepository.GetByEmail(ctx, normalizedRequest.Email)
+	if err != nil {
+		return res.WrapError(err, "Can not get user account", erres.UserGetFailed)
+	}
+
+	newPasswordHash, err := utils.HashPassword(normalizedRequest.NewPassword, s.cfg.App.SystemSecret)
+	if err != nil {
+		return res.WrapError(err, "Can not reset password now", erres.CommonInternal)
+	}
+
+	if err := s.userRepository.UpdatePassword(ctx, sqlc.UpdateUserPasswordParams{
+		ID:           user.ID,
+		PasswordHash: newPasswordHash,
+	}); err != nil {
+		return res.WrapError(err, "Can not reset password now", erres.UserUpdateFailed)
+	}
+
+	_ = s.emailOTPStore.Delete(ctx, resetKey)
+	return nil
 }

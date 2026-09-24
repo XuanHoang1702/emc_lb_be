@@ -42,6 +42,8 @@ func (r *UserRoute) RegisterPublic(router gin.IRouter) {
 		otpGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 5, time.Minute))
 		{
 			otpGroup.POST("/verify-email-otp", r.userHandler.HandleVerifyEmailOTP)
+			otpGroup.POST("/forgot-password", r.userHandler.HandleForgotPassword)
+			otpGroup.POST("/reset-password", r.userHandler.HandleResetPassword)
 		}
 
 		refreshGroup := userRoute.Group("")
@@ -55,6 +57,8 @@ func (r *UserRoute) RegisterPublic(router gin.IRouter) {
 		userRoute.POST("/verify-email-otp", r.userHandler.HandleVerifyEmailOTP)
 		userRoute.POST("/login", r.userHandler.HandleLogin)
 		userRoute.POST("/refresh-token", r.userHandler.HandleRefreshToken)
+		userRoute.POST("/forgot-password", r.userHandler.HandleForgotPassword)
+		userRoute.POST("/reset-password", r.userHandler.HandleResetPassword)
 	}
 }
 
@@ -65,5 +69,12 @@ func (r *UserRoute) RegisterProtected(router gin.IRouter) {
 		userRoute.POST("/logout", r.userHandler.HandleLogout)
 		userRoute.POST("/delete", r.userHandler.HandleDelete)
 		userRoute.PUT("/avatar", r.userHandler.HandleUpsertAvatar)
+		userRoute.POST("/change-password", r.userHandler.HandleChangePassword)
+		
+		adminRoute := userRoute.Group("/admin")
+		adminRoute.Use(middleware.RequirePermission("user:update"))
+		{
+			adminRoute.POST("/change-password/:uuid", r.userHandler.HandleAdminChangePassword)
+		}
 	}
 }

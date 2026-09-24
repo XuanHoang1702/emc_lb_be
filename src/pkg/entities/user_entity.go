@@ -139,3 +139,26 @@ type UserProfileResponse struct {
 	Profile       ProfileData `json:"profile"`
 	CreatedAt     time.Time   `json:"created_at"`
 }
+
+// ============================================================
+// Password Management
+// ============================================================
+
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8,password_strong"`
+}
+
+type AdminChangePasswordRequest struct {
+	NewPassword string `json:"new_password" binding:"required,min=8,password_strong"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type ResetPasswordRequest struct {
+	Email       string `json:"email" binding:"required,email"`
+	OTP         string `json:"otp" binding:"required,len=6"`
+	NewPassword string `json:"new_password" binding:"required,min=8,password_strong"`
+}

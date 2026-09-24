@@ -14,6 +14,11 @@ type TaskDistributor interface {
 		payload *PayloadSendVerifyEmail,
 		opts ...asynq.Option,
 	) error
+	DistributeTaskSendPasswordResetEmail(
+		ctx context.Context,
+		payload *PayloadSendPasswordResetEmail,
+		opts ...asynq.Option,
+	) error
 	DistributeTaskCancelExpiredOrder(
 		ctx context.Context,
 		payload *PayloadCancelExpiredOrder,
@@ -48,6 +53,26 @@ func (distributor *RedisTaskDistributor) DistributeTaskSendVerifyEmail(
 	}
 
 	task := asynq.NewTask(TaskSendVerifyEmail, jsonPayload, opts...)
+
+	_, err = distributor.client.EnqueueContext(ctx, task)
+	if err != nil {
+		return fmt.Errorf("failed to enqueue task: %w", err)
+	}
+
+	return nil
+}
+
+func (distributor *RedisTaskDistributor) DistributeTaskSendPasswordResetEmail(
+	ctx context.Context,
+	payload *PayloadSendPasswordResetEmail,
+	opts ...asynq.Option,
+) error {
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal task payload: %w", err)
+	}
+
+	task := asynq.NewTask(TaskSendPasswordResetEmail, jsonPayload, opts...)
 
 	_, err = distributor.client.EnqueueContext(ctx, task)
 	if err != nil {
@@ -96,4 +121,3 @@ func (distributor *RedisTaskDistributor) DistributeTaskSendOrderPaymentSuccessEm
 
 	return nil
 }
-

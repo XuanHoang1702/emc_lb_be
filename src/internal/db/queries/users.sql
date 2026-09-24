@@ -123,3 +123,11 @@ JOIN user_profiles p ON u.id = p.user_id
 JOIN customer_stats cs ON u.id = cs.user_id
 WHERE u.uuid = $1 AND u.is_deleted = false
 LIMIT 1;
+
+-- name: UpdateUserPassword :exec
+UPDATE users
+SET
+    password_hash = $2,
+    password_changed_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1 AND is_deleted = false;

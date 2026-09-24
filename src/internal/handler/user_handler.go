@@ -294,3 +294,146 @@ func (h *UserHandler) HandleGetProfile(ctx *gin.Context) {
 
 	res.Success(ctx, http.StatusOK, profile)
 }
+
+// HandleChangePassword godoc
+// @Summary      Change password
+// @Description  Change the currently authenticated user's password
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.ChangePasswordRequest true "Change Password Request"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/user/change-password [post]
+func (h *UserHandler) HandleChangePassword(ctx *gin.Context) {
+	userIDStr := ctx.GetString(middleware.ContextUserIDKey)
+	if userIDStr == "" {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid access token",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid user ID",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
+	var req entities.ChangePasswordRequest
+	err = validation.BindJSON(ctx, &req, errors.UserInvalidFormat)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	if err := h.userService.ChangePassword(ctx.Request.Context(), userID, req); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, "success_password_changed")
+}
+
+// HandleAdminChangePassword godoc
+// @Summary      Admin Change Password
+// @Description  Admin changes another user/partner's password
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        uuid path string true "Target User UUID"
+// @Param        body body entities.AdminChangePasswordRequest true "New Password Request"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Failure      403  {object}  res.APIResponse
+// @Failure      404  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/user/admin/change-password/{uuid} [post]
+func (h *UserHandler) HandleAdminChangePassword(ctx *gin.Context) {
+	targetUUIDStr := ctx.Param("uuid")
+	targetUUID, err := uuid.Parse(targetUUIDStr)
+	if err != nil {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid target user UUID",
+			Code:       errors.UserInvalidFormat,
+			StatusCode: http.StatusBadRequest,
+		})
+		return
+	}
+
+	var req entities.AdminChangePasswordRequest
+	err = validation.BindJSON(ctx, &req, errors.UserInvalidFormat)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	if err := h.userService.AdminChangePassword(ctx.Request.Context(), targetUUID, req); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, "success_admin_password_changed")
+}
+
+// HandleForgotPassword godoc
+// @Summary      Forgot Password
+// @Description  Request a password reset OTP sent to email
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.ForgotPasswordRequest true "Forgot Password Request"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Router       /api/v1/user/forgot-password [post]
+func (h *UserHandler) HandleForgotPassword(ctx *gin.Context) {
+	var req entities.ForgotPasswordRequest
+	err := validation.BindJSON(ctx, &req, errors.UserInvalidFormat)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	if err := h.userService.ForgotPassword(ctx.Request.Context(), req); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, "success_forgot_password")
+}
+
+// HandleResetPassword godoc
+// @Summary      Reset Password
+// @Description  Reset password using OTP from email
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.ResetPasswordRequest true "Reset Password Request"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Router       /api/v1/user/reset-password [post]
+func (h *UserHandler) HandleResetPassword(ctx *gin.Context) {
+	var req entities.ResetPasswordRequest
+	err := validation.BindJSON(ctx, &req, errors.UserInvalidFormat)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	if err := h.userService.ResetPassword(ctx.Request.Context(), req); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, "success_password_reset")
+}

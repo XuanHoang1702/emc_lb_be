@@ -2,11 +2,19 @@ package worker
 
 const (
 	TaskSendVerifyEmail                  = "task:send_verify_email"
+	TaskSendPasswordResetEmail           = "task:send_password_reset_email"
 	TaskCancelExpiredOrder               = "task:cancel_expired_order"
 	TaskSendOrderPaymentSuccessEmail     = "task:send_order_payment_success_email"
 )
 
 type PayloadSendVerifyEmail struct {
+	Email    string `json:"email"`
+	UserName string `json:"user_name"`
+	OTP      string `json:"otp"`
+	TTL      int    `json:"ttl"`
+}
+
+type PayloadSendPasswordResetEmail struct {
 	Email    string `json:"email"`
 	UserName string `json:"user_name"`
 	OTP      string `json:"otp"`

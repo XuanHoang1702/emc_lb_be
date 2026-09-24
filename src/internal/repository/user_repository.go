@@ -25,6 +25,7 @@ type UserRepository interface {
 	LockUserAccount(context.Context, sqlc.LockUserAccountParams) error
 	UpdateUserLoginStats(context.Context, sqlc.UpdateUserLoginStatsParams) error
 	GetUserProfileByUUID(context.Context, uuid.UUID) (sqlc.GetUserProfileByUUIDRow, error)
+	UpdatePassword(context.Context, sqlc.UpdateUserPasswordParams) error
 }
 
 type userRepository struct {
@@ -142,3 +143,8 @@ func (r *userRepository) UpdateUserLoginStats(ctx context.Context, arg sqlc.Upda
 func (r *userRepository) GetUserProfileByUUID(ctx context.Context, id uuid.UUID) (sqlc.GetUserProfileByUUIDRow, error) {
 	return r.db.GetUserProfileByUUID(ctx, id)
 }
+
+func (r *userRepository) UpdatePassword(ctx context.Context, params sqlc.UpdateUserPasswordParams) error {
+	return r.db.UpdateUserPassword(ctx, params)
+}
+

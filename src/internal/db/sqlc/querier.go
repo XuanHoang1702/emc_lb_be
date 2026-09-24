@@ -37,6 +37,7 @@ type Querier interface {
 	UpdateOrderStatusAtomic(ctx context.Context, arg UpdateOrderStatusAtomicParams) (int64, error)
 	UpdateUserAvatarByUUID(ctx context.Context, arg UpdateUserAvatarByUUIDParams) error
 	UpdateUserLoginStats(ctx context.Context, arg UpdateUserLoginStatsParams) error
+	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	VerifyUserEmail(ctx context.Context, email string) error
 }
 
