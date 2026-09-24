@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	
+
 	"emc_lb/src/internal/db/sqlc"
 	"emc_lb/src/pkg/auth"
 )
@@ -45,7 +45,7 @@ func (s *rbacService) AssignPermissionToRole(ctx context.Context, roleCode, perm
 	if err != nil {
 		return err
 	}
-	
+
 	// Notify other nodes to refresh their cache
 	return auth.GetRBACManager().PublishCacheInvalidation(ctx)
 }

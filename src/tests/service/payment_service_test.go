@@ -67,7 +67,6 @@ func (s *stubPaymentOrderSvc) CancelOrder(ctx context.Context, userID string, or
 	return nil
 }
 
-
 func TestProcessIPN_OrderPaid(t *testing.T) {
 	var markedInvoice string
 	orderSvc := &stubPaymentOrderSvc{

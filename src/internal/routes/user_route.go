@@ -70,7 +70,7 @@ func (r *UserRoute) RegisterProtected(router gin.IRouter) {
 		userRoute.POST("/delete", r.userHandler.HandleDelete)
 		userRoute.PUT("/avatar", r.userHandler.HandleUpsertAvatar)
 		userRoute.POST("/change-password", r.userHandler.HandleChangePassword)
-		
+
 		adminRoute := userRoute.Group("/admin")
 		adminRoute.Use(middleware.RequirePermission("user:update"))
 		{

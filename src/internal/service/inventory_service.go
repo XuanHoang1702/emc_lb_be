@@ -31,7 +31,7 @@ type InventoryService interface {
 
 	// RestoreStock atomically increments stock in Redis (useful for rollbacks/cancellations).
 	RestoreStock(ctx context.Context, productID string, quantity int64) error
-	
+
 	// SyncStockToRedis is used to warm up the cache from MongoDB to Redis.
 	SyncStockToRedis(ctx context.Context, productID string, stock int64) error
 }

@@ -75,7 +75,7 @@ func (h *PaymentHandler) HandleSepayIPN(ctx *gin.Context) {
 		return
 	}
 
-	logs.WithContext(ctx.Request.Context()).Info("Received SePay IPN webhook", 
+	logs.WithContext(ctx.Request.Context()).Info("Received SePay IPN webhook",
 		"invoice", req.Order.OrderInvoiceNumber,
 		"transaction_id", req.Transaction.TransactionID,
 	)
@@ -241,4 +241,3 @@ func (h *PaymentHandler) HandlePaymentCancel(ctx *gin.Context) {
 	</html>`
 	ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(htmlContent))
 }
-

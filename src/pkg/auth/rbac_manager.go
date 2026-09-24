@@ -33,7 +33,7 @@ func InitRBACManager(queries *sqlc.Queries, redisClient *redis.Client) {
 		if err := manager.LoadPermissions(queries); err != nil {
 			log.Fatalf("Failed to initialize RBAC Manager: %v", err)
 		}
-		
+
 		if redisClient != nil {
 			go manager.startCacheInvalidationListener()
 		}

@@ -26,7 +26,7 @@ func (r *RBACRoute) RegisterPublic(router gin.IRouter) {
 
 func (r *RBACRoute) RegisterProtected(router gin.IRouter) {
 	rbacGroup := router.Group("/rbac")
-	
+
 	// Only superadmin or admin can manage RBAC
 	// AccessTokenMiddleware is already applied by the protectedGroup
 	rbacGroup.Use(middleware.RequirePermission("manage_rbac")) // Will be bypassed if role=admin/superadmin

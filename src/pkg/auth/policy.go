@@ -10,10 +10,10 @@ func CanManageOrder(u UserContext, orderOwnerID string) bool {
 	if u.Role == "admin" || u.Role == "superadmin" {
 		return true
 	}
-	
+
 	if GetRBACManager().HasPermission(u.Role, "manage_orders") {
 		return true
 	}
-	
+
 	return u.UserID == orderOwnerID
 }

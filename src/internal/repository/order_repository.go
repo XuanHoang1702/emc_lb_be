@@ -90,7 +90,7 @@ func (r *orderRepository) Create(ctx context.Context, order entities.Order) (ent
 		}
 	}
 
-	// We only return the ID for now. For a full entity, we would fetch items too, 
+	// We only return the ID for now. For a full entity, we would fetch items too,
 	// but the service already has the full entity and just needs the ID.
 	order.ID = row.Uuid.String()
 	return order, nil
@@ -130,7 +130,7 @@ func (r *orderRepository) GetByID(ctx context.Context, id string) (entities.Orde
 	if err != nil {
 		return entities.Order{}, err
 	}
-	
+
 	items, err := r.db.GetOrderItemsByOrderID(ctx, row.ID)
 	if err != nil {
 		return entities.Order{}, err
@@ -174,8 +174,8 @@ func (r *orderRepository) UpdateStatusAtomic(ctx context.Context, id string, exp
 		return err
 	}
 	rowsAffected, err := r.db.UpdateOrderStatusAtomic(ctx, sqlc.UpdateOrderStatusAtomicParams{
-		Uuid:   orderUUID,
-		Status: expectedCurrent,
+		Uuid:     orderUUID,
+		Status:   expectedCurrent,
 		Status_2: newStatus,
 	})
 	if err != nil {
@@ -221,13 +221,27 @@ func (r *orderRepository) GetCustomerInfoByUserID(ctx context.Context, userID st
 // Helpers
 func toOrderEntityFromSqlc(row sqlc.Order, userID string) entities.Order {
 	var shopID, paymentGroupID, couponCode, paymentMethod, shipping, phone, txID string
-	if row.ShopID != nil { shopID = *row.ShopID }
-	if row.PaymentGroupID != nil { paymentGroupID = *row.PaymentGroupID }
-	if row.CouponCode != nil { couponCode = *row.CouponCode }
-	if row.PaymentMethod != nil { paymentMethod = *row.PaymentMethod }
-	if row.ShippingAddress != nil { shipping = *row.ShippingAddress }
-	if row.ContactPhone != nil { phone = *row.ContactPhone }
-	if row.PaymentTransactionID != nil { txID = *row.PaymentTransactionID }
+	if row.ShopID != nil {
+		shopID = *row.ShopID
+	}
+	if row.PaymentGroupID != nil {
+		paymentGroupID = *row.PaymentGroupID
+	}
+	if row.CouponCode != nil {
+		couponCode = *row.CouponCode
+	}
+	if row.PaymentMethod != nil {
+		paymentMethod = *row.PaymentMethod
+	}
+	if row.ShippingAddress != nil {
+		shipping = *row.ShippingAddress
+	}
+	if row.ContactPhone != nil {
+		phone = *row.ContactPhone
+	}
+	if row.PaymentTransactionID != nil {
+		txID = *row.PaymentTransactionID
+	}
 
 	var txIDPtr *string
 	if txID != "" {
@@ -240,37 +254,51 @@ func toOrderEntityFromSqlc(row sqlc.Order, userID string) entities.Order {
 	total, _ := row.TotalAmount.Float64Value()
 
 	return entities.Order{
-		ID:              row.Uuid.String(),
-		PaymentGroupID:  paymentGroupID,
-		ShopID:          shopID,
-		UserID:          userID,
-		InvoiceNumber:   row.InvoiceNumber,
-		SubTotal:        subTotal.Float64,
-		CouponCode:      couponCode,
-		DiscountAmount:  discount.Float64,
-		TaxAmount:       tax.Float64,
-		TotalAmount:     total.Float64,
-		Status:          row.Status,
-		PaymentStatus:   row.PaymentStatus,
-		PaymentMethod:   paymentMethod,
+		ID:                   row.Uuid.String(),
+		PaymentGroupID:       paymentGroupID,
+		ShopID:               shopID,
+		UserID:               userID,
+		InvoiceNumber:        row.InvoiceNumber,
+		SubTotal:             subTotal.Float64,
+		CouponCode:           couponCode,
+		DiscountAmount:       discount.Float64,
+		TaxAmount:            tax.Float64,
+		TotalAmount:          total.Float64,
+		Status:               row.Status,
+		PaymentStatus:        row.PaymentStatus,
+		PaymentMethod:        paymentMethod,
 		PaymentTransactionID: txIDPtr,
-		ShippingAddress: shipping,
-		ContactPhone:    phone,
-		IsDeleted:       row.IsDeleted,
-		CreatedAt:       row.CreatedAt,
-		UpdatedAt:       row.UpdatedAt,
+		ShippingAddress:      shipping,
+		ContactPhone:         phone,
+		IsDeleted:            row.IsDeleted,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
 	}
 }
 
 func toOrderEntityFromSqlcRow(row sqlc.GetOrderByUUIDRow) entities.Order {
 	var shopID, paymentGroupID, couponCode, paymentMethod, shipping, phone, txID string
-	if row.ShopID != nil { shopID = *row.ShopID }
-	if row.PaymentGroupID != nil { paymentGroupID = *row.PaymentGroupID }
-	if row.CouponCode != nil { couponCode = *row.CouponCode }
-	if row.PaymentMethod != nil { paymentMethod = *row.PaymentMethod }
-	if row.ShippingAddress != nil { shipping = *row.ShippingAddress }
-	if row.ContactPhone != nil { phone = *row.ContactPhone }
-	if row.PaymentTransactionID != nil { txID = *row.PaymentTransactionID }
+	if row.ShopID != nil {
+		shopID = *row.ShopID
+	}
+	if row.PaymentGroupID != nil {
+		paymentGroupID = *row.PaymentGroupID
+	}
+	if row.CouponCode != nil {
+		couponCode = *row.CouponCode
+	}
+	if row.PaymentMethod != nil {
+		paymentMethod = *row.PaymentMethod
+	}
+	if row.ShippingAddress != nil {
+		shipping = *row.ShippingAddress
+	}
+	if row.ContactPhone != nil {
+		phone = *row.ContactPhone
+	}
+	if row.PaymentTransactionID != nil {
+		txID = *row.PaymentTransactionID
+	}
 
 	var txIDPtr *string
 	if txID != "" {
@@ -283,37 +311,51 @@ func toOrderEntityFromSqlcRow(row sqlc.GetOrderByUUIDRow) entities.Order {
 	total, _ := row.TotalAmount.Float64Value()
 
 	return entities.Order{
-		ID:              row.Uuid.String(),
-		PaymentGroupID:  paymentGroupID,
-		ShopID:          shopID,
-		UserID:          row.UserUuid.String(),
-		InvoiceNumber:   row.InvoiceNumber,
-		SubTotal:        subTotal.Float64,
-		CouponCode:      couponCode,
-		DiscountAmount:  discount.Float64,
-		TaxAmount:       tax.Float64,
-		TotalAmount:     total.Float64,
-		Status:          row.Status,
-		PaymentStatus:   row.PaymentStatus,
-		PaymentMethod:   paymentMethod,
+		ID:                   row.Uuid.String(),
+		PaymentGroupID:       paymentGroupID,
+		ShopID:               shopID,
+		UserID:               row.UserUuid.String(),
+		InvoiceNumber:        row.InvoiceNumber,
+		SubTotal:             subTotal.Float64,
+		CouponCode:           couponCode,
+		DiscountAmount:       discount.Float64,
+		TaxAmount:            tax.Float64,
+		TotalAmount:          total.Float64,
+		Status:               row.Status,
+		PaymentStatus:        row.PaymentStatus,
+		PaymentMethod:        paymentMethod,
 		PaymentTransactionID: txIDPtr,
-		ShippingAddress: shipping,
-		ContactPhone:    phone,
-		IsDeleted:       row.IsDeleted,
-		CreatedAt:       row.CreatedAt,
-		UpdatedAt:       row.UpdatedAt,
+		ShippingAddress:      shipping,
+		ContactPhone:         phone,
+		IsDeleted:            row.IsDeleted,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
 	}
 }
 
 func toOrderEntityFromSqlcInvoiceRow(row sqlc.GetOrderByInvoiceNumberRow) entities.Order {
 	var shopID, paymentGroupID, couponCode, paymentMethod, shipping, phone, txID string
-	if row.ShopID != nil { shopID = *row.ShopID }
-	if row.PaymentGroupID != nil { paymentGroupID = *row.PaymentGroupID }
-	if row.CouponCode != nil { couponCode = *row.CouponCode }
-	if row.PaymentMethod != nil { paymentMethod = *row.PaymentMethod }
-	if row.ShippingAddress != nil { shipping = *row.ShippingAddress }
-	if row.ContactPhone != nil { phone = *row.ContactPhone }
-	if row.PaymentTransactionID != nil { txID = *row.PaymentTransactionID }
+	if row.ShopID != nil {
+		shopID = *row.ShopID
+	}
+	if row.PaymentGroupID != nil {
+		paymentGroupID = *row.PaymentGroupID
+	}
+	if row.CouponCode != nil {
+		couponCode = *row.CouponCode
+	}
+	if row.PaymentMethod != nil {
+		paymentMethod = *row.PaymentMethod
+	}
+	if row.ShippingAddress != nil {
+		shipping = *row.ShippingAddress
+	}
+	if row.ContactPhone != nil {
+		phone = *row.ContactPhone
+	}
+	if row.PaymentTransactionID != nil {
+		txID = *row.PaymentTransactionID
+	}
 
 	var txIDPtr *string
 	if txID != "" {
@@ -326,25 +368,25 @@ func toOrderEntityFromSqlcInvoiceRow(row sqlc.GetOrderByInvoiceNumberRow) entiti
 	total, _ := row.TotalAmount.Float64Value()
 
 	return entities.Order{
-		ID:              row.Uuid.String(),
-		PaymentGroupID:  paymentGroupID,
-		ShopID:          shopID,
-		UserID:          row.UserUuid.String(),
-		InvoiceNumber:   row.InvoiceNumber,
-		SubTotal:        subTotal.Float64,
-		CouponCode:      couponCode,
-		DiscountAmount:  discount.Float64,
-		TaxAmount:       tax.Float64,
-		TotalAmount:     total.Float64,
-		Status:          row.Status,
-		PaymentStatus:   row.PaymentStatus,
-		PaymentMethod:   paymentMethod,
+		ID:                   row.Uuid.String(),
+		PaymentGroupID:       paymentGroupID,
+		ShopID:               shopID,
+		UserID:               row.UserUuid.String(),
+		InvoiceNumber:        row.InvoiceNumber,
+		SubTotal:             subTotal.Float64,
+		CouponCode:           couponCode,
+		DiscountAmount:       discount.Float64,
+		TaxAmount:            tax.Float64,
+		TotalAmount:          total.Float64,
+		Status:               row.Status,
+		PaymentStatus:        row.PaymentStatus,
+		PaymentMethod:        paymentMethod,
 		PaymentTransactionID: txIDPtr,
-		ShippingAddress: shipping,
-		ContactPhone:    phone,
-		IsDeleted:       row.IsDeleted,
-		CreatedAt:       row.CreatedAt,
-		UpdatedAt:       row.UpdatedAt,
+		ShippingAddress:      shipping,
+		ContactPhone:         phone,
+		IsDeleted:            row.IsDeleted,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
 	}
 }
 
@@ -352,9 +394,13 @@ func toOrderItemsEntityFromSqlc(items []sqlc.OrderItem) []entities.OrderItem {
 	result := make([]entities.OrderItem, 0, len(items))
 	for _, item := range items {
 		var sku, thumb string
-		if item.Sku != nil { sku = *item.Sku }
-		if item.Thumbnail != nil { thumb = *item.Thumbnail }
-		
+		if item.Sku != nil {
+			sku = *item.Sku
+		}
+		if item.Thumbnail != nil {
+			thumb = *item.Thumbnail
+		}
+
 		price, _ := item.Price.Float64Value()
 		subTotal, _ := item.SubTotal.Float64Value()
 
@@ -378,4 +424,3 @@ func Float64ToNumeric(f float64) pgtype.Numeric {
 	_ = num.Scan(fmt.Sprintf("%f", f))
 	return num
 }
-

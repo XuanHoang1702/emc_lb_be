@@ -90,7 +90,7 @@ func (r *userRepository) Create(ctx context.Context, user entities.User, profile
 		Email:        user.Email,
 		PasswordHash: user.PasswordHash,
 	}
-	
+
 	row, err := r.db.CreateUser(ctx, params)
 	if err != nil {
 		return entities.User{}, err
@@ -147,4 +147,3 @@ func (r *userRepository) GetUserProfileByUUID(ctx context.Context, id uuid.UUID)
 func (r *userRepository) UpdatePassword(ctx context.Context, params sqlc.UpdateUserPasswordParams) error {
 	return r.db.UpdateUserPassword(ctx, params)
 }
-

@@ -52,7 +52,6 @@ func (r *stubOrderRepository) GetByID(_ context.Context, id string) (entities.Or
 	return entities.Order{}, errors.New("not found")
 }
 
-
 func (r *stubOrderRepository) UpdateStatusAtomic(_ context.Context, id string, expectedCurrent string, newStatus string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -592,7 +591,7 @@ func TestConcurrency_DoubleCancelPrevention(t *testing.T) {
 	productRepo := newStubProductRepo()
 	productRepo.products["p1"] = sampleProduct("p1", "shop-A", 100, 8) // Current stock 8
 	orderRepo := newStubOrderRepo()
-	
+
 	orderID := "order-cancel-race"
 	orderRepo.orders = append(orderRepo.orders, entities.Order{
 		ID:     orderID,

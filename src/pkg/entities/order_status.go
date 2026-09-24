@@ -46,9 +46,9 @@ func CanTransition(current, next string) bool {
 // ValidPaymentTransitions defines allowed payment status transitions.
 var ValidPaymentTransitions = map[string][]string{
 	PaymentStatusUnpaid:   {PaymentStatusPaid, PaymentStatusFailed},
-	PaymentStatusFailed:   {PaymentStatusPaid}, // Allow a retry to succeed
+	PaymentStatusFailed:   {PaymentStatusPaid},     // Allow a retry to succeed
 	PaymentStatusPaid:     {PaymentStatusRefunded}, // Paid is terminal except for refunds
-	PaymentStatusRefunded: {}, // terminal
+	PaymentStatusRefunded: {},                      // terminal
 }
 
 // CanTransitionPayment checks if transitioning from current to next is a valid payment state change.

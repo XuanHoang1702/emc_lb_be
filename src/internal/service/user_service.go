@@ -456,12 +456,12 @@ func (s *userService) GetProfile(ctx context.Context, userID uuid.UUID) (entitie
 	if row.AvatarUrl != nil {
 		avatarURL = *row.AvatarUrl
 	}
-	
+
 	var phone string
 	if row.Phone != nil {
 		phone = *row.Phone
 	}
-	
+
 	var fullName string
 	if row.FullName != nil {
 		fullName = *row.FullName
