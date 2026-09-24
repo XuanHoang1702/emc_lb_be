@@ -14,6 +14,8 @@ import (
 	"emc_lb/src/pkg/mapping"
 	"emc_lb/src/pkg/res"
 	"emc_lb/src/pkg/utils"
+
+	"golang.org/x/sync/singleflight"
 )
 
 type ProductService interface {
@@ -29,6 +31,7 @@ type productService struct {
 	categoryRepository repository.CategoryRepository
 	brandRepository    repository.BrandRepository
 	cacheStore         cache.ProductCacheStore
+	sg                 singleflight.Group
 }
 
 func NewProductService(productRepository repository.ProductRepository, categoryRepository repository.CategoryRepository, brandRepository repository.BrandRepository, cacheStore cache.ProductCacheStore) ProductService {
@@ -116,34 +119,46 @@ func (s *productService) Create(ctx context.Context, req entities.CreateProductR
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.InvalidateAll(ctx)
+		_ = s.cacheStore.InvalidateList(ctx)
 	}
 
 	return mapping.ToProductResponse(product), nil
 }
 
 func (s *productService) List(ctx context.Context) ([]entities.ProductResponse, error) {
+	queryHash := "default" // In the future, this would be a hash of pagination/filter params
+
 	if s.cacheStore != nil {
-		if cached, err := s.cacheStore.GetAll(ctx); err == nil {
+		if cached, err := s.cacheStore.GetList(ctx, queryHash); err == nil {
 			return cached, nil
 		}
 	}
 
-	products, err := s.productRepository.List(ctx)
+	// Singleflight for list
+	sgKey := "list:" + queryHash
+	result, err, _ := s.sg.Do(sgKey, func() (interface{}, error) {
+		products, err := s.productRepository.List(ctx)
+		if err != nil {
+			return nil, res.WrapError(err, "Can not get products now", erres.CommonInternal)
+		}
+
+		responses := make([]entities.ProductResponse, 0, len(products))
+		for _, product := range products {
+			responses = append(responses, mapping.ToProductResponse(product))
+		}
+
+		if s.cacheStore != nil {
+			_ = s.cacheStore.SetList(ctx, queryHash, responses)
+		}
+
+		return responses, nil
+	})
+
 	if err != nil {
-		return nil, res.WrapError(err, "Can not get products now", erres.CommonInternal)
+		return nil, err
 	}
 
-	responses := make([]entities.ProductResponse, 0, len(products))
-	for _, product := range products {
-		responses = append(responses, mapping.ToProductResponse(product))
-	}
-
-	if s.cacheStore != nil {
-		_ = s.cacheStore.SetAll(ctx, responses)
-	}
-
-	return responses, nil
+	return result.([]entities.ProductResponse), nil
 }
 
 func (s *productService) GetByID(ctx context.Context, id string) (entities.ProductResponse, error) {
@@ -153,17 +168,27 @@ func (s *productService) GetByID(ctx context.Context, id string) (entities.Produ
 		}
 	}
 
-	product, err := s.productRepository.GetByID(ctx, id)
+	// Singleflight for detail
+	sgKey := "detail:" + id
+	result, err, _ := s.sg.Do(sgKey, func() (interface{}, error) {
+		product, err := s.productRepository.GetByID(ctx, id)
+		if err != nil {
+			return entities.ProductResponse{}, res.WrapError(err, "Product not found", erres.CommonNotFound)
+		}
+
+		response := mapping.ToProductResponse(product)
+		if s.cacheStore != nil {
+			_ = s.cacheStore.SetByID(ctx, id, response)
+		}
+
+		return response, nil
+	})
+
 	if err != nil {
-		return entities.ProductResponse{}, res.WrapError(err, "Product not found", erres.CommonNotFound)
+		return entities.ProductResponse{}, err
 	}
 
-	result := mapping.ToProductResponse(product)
-	if s.cacheStore != nil {
-		_ = s.cacheStore.SetByID(ctx, id, result)
-	}
-
-	return result, nil
+	return result.(entities.ProductResponse), nil
 }
 
 //nolint:gocyclo

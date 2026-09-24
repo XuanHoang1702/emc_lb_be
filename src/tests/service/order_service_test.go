@@ -244,10 +244,10 @@ type stubProductCache struct {
 	invalidated bool
 }
 
-func (c *stubProductCache) GetAll(_ context.Context) ([]entities.ProductResponse, error) {
+func (c *stubProductCache) GetList(_ context.Context, _ string) ([]entities.ProductResponse, error) {
 	return nil, errors.New("miss")
 }
-func (c *stubProductCache) SetAll(_ context.Context, _ []entities.ProductResponse) error {
+func (c *stubProductCache) SetList(_ context.Context, _ string, _ []entities.ProductResponse) error {
 	return nil
 }
 func (c *stubProductCache) GetByID(_ context.Context, _ string) (entities.ProductResponse, error) {
@@ -260,7 +260,7 @@ func (c *stubProductCache) Invalidate(_ context.Context, _ string) error {
 	c.invalidated = true
 	return nil
 }
-func (c *stubProductCache) InvalidateAll(_ context.Context) error {
+func (c *stubProductCache) InvalidateList(_ context.Context) error {
 	c.invalidated = true
 	return nil
 }

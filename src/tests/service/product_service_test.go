@@ -12,11 +12,11 @@ import (
 
 // stubProductCacheStore for testing cache behavior
 type stubProductCacheStore struct {
-	listData      []entities.ProductResponse
-	itemData      map[string]entities.ProductResponse
-	listSet       bool
-	invalidateAll bool
-	invalidateID  string
+	listData       []entities.ProductResponse
+	itemData       map[string]entities.ProductResponse
+	listSet        bool
+	invalidateList bool
+	invalidateID   string
 }
 
 func newStubProductCache() *stubProductCacheStore {
@@ -25,14 +25,14 @@ func newStubProductCache() *stubProductCacheStore {
 	}
 }
 
-func (c *stubProductCacheStore) GetAll(_ context.Context) ([]entities.ProductResponse, error) {
+func (c *stubProductCacheStore) GetList(_ context.Context, queryHash string) ([]entities.ProductResponse, error) {
 	if c.listData != nil {
 		return c.listData, nil
 	}
 	return nil, errors.New("cache miss")
 }
 
-func (c *stubProductCacheStore) SetAll(_ context.Context, products []entities.ProductResponse) error {
+func (c *stubProductCacheStore) SetList(_ context.Context, queryHash string, products []entities.ProductResponse) error {
 	c.listData = products
 	c.listSet = true
 	return nil
@@ -57,10 +57,9 @@ func (c *stubProductCacheStore) Invalidate(_ context.Context, id string) error {
 	return nil
 }
 
-func (c *stubProductCacheStore) InvalidateAll(_ context.Context) error {
-	c.invalidateAll = true
+func (c *stubProductCacheStore) InvalidateList(_ context.Context) error {
+	c.invalidateList = true
 	c.listData = nil
-	c.itemData = make(map[string]entities.ProductResponse)
 	return nil
 }
 
@@ -274,8 +273,8 @@ func TestCreate_InvalidatesCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if !cacheStore.invalidateAll {
-		t.Fatal("expected cache to be invalidated after create")
+	if !cacheStore.invalidateList {
+		t.Fatal("expected list cache to be invalidated after create")
 	}
 }
 

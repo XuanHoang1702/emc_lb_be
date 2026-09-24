@@ -15,6 +15,7 @@ import (
 	"emc_lb/src/pkg/utils"
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"golang.org/x/sync/singleflight"
 )
 
 type CategoryService interface {
@@ -28,6 +29,7 @@ type CategoryService interface {
 type categoryService struct {
 	categoryRepository repository.CategoryRepository
 	cacheStore         cache.CategoryCacheStore
+	sg                 singleflight.Group
 }
 
 func NewCategoryService(categoryRepository repository.CategoryRepository, cacheStore cache.CategoryCacheStore) CategoryService {
@@ -91,34 +93,45 @@ func (s *categoryService) Create(ctx context.Context, req entities.CreateCategor
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.InvalidateAll(ctx)
+		_ = s.cacheStore.InvalidateList(ctx)
 	}
 
 	return mapping.ToCategoryResponse(category), nil
 }
 
 func (s *categoryService) List(ctx context.Context) ([]entities.CategoryResponse, error) {
+	queryHash := "default"
+
 	if s.cacheStore != nil {
-		if cached, err := s.cacheStore.GetAll(ctx); err == nil {
+		if cached, err := s.cacheStore.GetList(ctx, queryHash); err == nil {
 			return cached, nil
 		}
 	}
 
-	categories, err := s.categoryRepository.List(ctx)
+	sgKey := "list:" + queryHash
+	result, err, _ := s.sg.Do(sgKey, func() (interface{}, error) {
+		categories, err := s.categoryRepository.List(ctx)
+		if err != nil {
+			return nil, res.WrapError(err, "Can not get categories now", erres.CommonInternal)
+		}
+
+		responses := make([]entities.CategoryResponse, 0, len(categories))
+		for _, category := range categories {
+			responses = append(responses, mapping.ToCategoryResponse(category))
+		}
+
+		if s.cacheStore != nil {
+			_ = s.cacheStore.SetList(ctx, queryHash, responses)
+		}
+
+		return responses, nil
+	})
+
 	if err != nil {
-		return nil, res.WrapError(err, "Can not get categories now", erres.CommonInternal)
+		return nil, err
 	}
 
-	responses := make([]entities.CategoryResponse, 0, len(categories))
-	for _, category := range categories {
-		responses = append(responses, mapping.ToCategoryResponse(category))
-	}
-
-	if s.cacheStore != nil {
-		_ = s.cacheStore.SetAll(ctx, responses)
-	}
-
-	return responses, nil
+	return result.([]entities.CategoryResponse), nil
 }
 
 func (s *categoryService) GetByID(ctx context.Context, id string) (entities.CategoryResponse, error) {
@@ -132,20 +145,29 @@ func (s *categoryService) GetByID(ctx context.Context, id string) (entities.Cate
 		}
 	}
 
-	category, err := s.categoryRepository.GetByID(ctx, id)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return entities.CategoryResponse{}, newNotFoundError("Category not found")
+	sgKey := "detail:" + id
+	result, err, _ := s.sg.Do(sgKey, func() (interface{}, error) {
+		category, err := s.categoryRepository.GetByID(ctx, id)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				return entities.CategoryResponse{}, newNotFoundError("Category not found")
+			}
+			return entities.CategoryResponse{}, res.WrapError(err, "Can not get category now", erres.CommonInternal)
 		}
-		return entities.CategoryResponse{}, res.WrapError(err, "Can not get category now", erres.CommonInternal)
+
+		response := mapping.ToCategoryResponse(category)
+		if s.cacheStore != nil {
+			_ = s.cacheStore.SetByID(ctx, id, response)
+		}
+
+		return response, nil
+	})
+
+	if err != nil {
+		return entities.CategoryResponse{}, err
 	}
 
-	result := mapping.ToCategoryResponse(category)
-	if s.cacheStore != nil {
-		_ = s.cacheStore.SetByID(ctx, id, result)
-	}
-
-	return result, nil
+	return result.(entities.CategoryResponse), nil
 }
 
 //nolint:gocyclo
