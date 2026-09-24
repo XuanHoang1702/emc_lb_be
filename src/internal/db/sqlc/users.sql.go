@@ -321,6 +321,7 @@ func (q *Queries) UpdateUserLoginStats(ctx context.Context, arg UpdateUserLoginS
 	return err
 }
 
+// #nosec G101
 const updateUserPassword = `-- name: UpdateUserPassword :exec
 UPDATE users
 SET

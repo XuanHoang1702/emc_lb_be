@@ -2,7 +2,7 @@ package worker
 
 const (
 	TaskSendVerifyEmail              = "task:send_verify_email"
-	TaskSendPasswordResetEmail       = "task:send_password_reset_email"
+	TaskSendPasswordResetEmail       = "task:send_password_reset_email" // #nosec G101
 	TaskCancelExpiredOrder           = "task:cancel_expired_order"
 	TaskSendOrderPaymentSuccessEmail = "task:send_order_payment_success_email"
 )

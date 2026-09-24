@@ -73,6 +73,9 @@ func (r *orderRepository) Create(ctx context.Context, order entities.Order) (ent
 	}
 
 	for _, item := range order.Items {
+		if item.Quantity > 2147483647 || item.Quantity < -2147483648 {
+			return entities.Order{}, fmt.Errorf("quantity %d overflows int32", item.Quantity)
+		}
 		sku := item.SKU
 		thumb := item.Thumbnail
 		_, err = r.db.CreateOrderItem(ctx, sqlc.CreateOrderItemParams{
