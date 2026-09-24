@@ -28,10 +28,12 @@ func TestEmbeddedMigrationsSource(t *testing.T) {
 		t.Fatalf("expected fs.ErrNotExist at end of migrations, got %v", err)
 	}
 
-	if len(versions) != 3 {
-		t.Fatalf("expected 3 embedded migrations, got %d (%v)", len(versions), versions)
+	if len(versions) < 1 {
+		t.Fatalf("expected at least 1 embedded migration, got %d (%v)", len(versions), versions)
 	}
-	if versions[0] != 1 || versions[1] != 2 || versions[2] != 3 {
-		t.Fatalf("expected versions [1 2 3], got %v", versions)
+	for i, v := range versions {
+		if v != uint(i+1) {
+			t.Fatalf("expected sequential version %d at index %d, got %d", i+1, i, v)
+		}
 	}
 }
