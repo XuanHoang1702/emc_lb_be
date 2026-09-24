@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	
+
 	"emc_lb/src/internal/db/sqlc"
 	"emc_lb/src/pkg/entities"
 )
@@ -95,12 +95,12 @@ func TestUserMapping(t *testing.T) {
 	if resp.Email != user.Email || resp.UserName != profile.UserName || resp.Phone != *profile.Phone {
 		t.Errorf("ToRegisterUserResponse failed")
 	}
-	
+
 	resp2 := ToRegisterUserResponse(user, profile2)
 	if resp2.Phone != "" {
 		t.Errorf("expected empty phone")
 	}
-	
+
 	row := sqlc.CreateUserRow{
 		ID:    1,
 		Uuid:  uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),

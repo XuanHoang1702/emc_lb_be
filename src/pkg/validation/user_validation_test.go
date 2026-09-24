@@ -1,8 +1,8 @@
 package validation
 
 import (
-	"testing"
 	"github.com/go-playground/validator/v10"
+	"testing"
 )
 
 func TestIsValidPhone(t *testing.T) {
@@ -39,15 +39,15 @@ func TestRegisterCustomValidation(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid", CustomValStruct{
-			Email: "test@gmail.com",
+			Email:    "test@gmail.com",
 			Password: "Password123!",
-			Phone: "+12345678901",
-			Slug: "test-slug",
-			Regex: "abc",
-			Search: "test search 123",
-			MinInt: 6,
-			MaxInt: 9,
-			FileExt: "image.jpg",
+			Phone:    "+12345678901",
+			Slug:     "test-slug",
+			Regex:    "abc",
+			Search:   "test search 123",
+			MinInt:   6,
+			MaxInt:   9,
+			FileExt:  "image.jpg",
 		}, false},
 		{"invalid_email", CustomValStruct{Email: "test@abc.com", Password: "Password123!", Phone: "0123456789", Slug: "a", Regex: "a", Search: "a", MinInt: 5, MaxInt: 10, FileExt: "a.jpg"}, true},
 		{"invalid_password", CustomValStruct{Email: "test@gmail.com", Password: "weak", Phone: "0123456789", Slug: "a", Regex: "a", Search: "a", MinInt: 5, MaxInt: 10, FileExt: "a.jpg"}, true},

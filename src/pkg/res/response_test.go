@@ -85,7 +85,7 @@ func TestSuccessResponse(t *testing.T) {
 	c.Request = &http.Request{Header: make(http.Header)}
 
 	Success(c, http.StatusOK, "msg", map[string]any{"data": "val", "pagination": "page"})
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", w.Code)
 	}
@@ -93,7 +93,7 @@ func TestSuccessResponse(t *testing.T) {
 
 func TestErrorResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	// Test AppError
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

@@ -92,7 +92,7 @@ func TestNewOffsetPagedResponse(t *testing.T) {
 func TestNewCursorPagedResponse(t *testing.T) {
 	items := []string{"a", "b", "c"}
 	resp := NewCursorPagedResponse(items, 2, func(s string) string { return s })
-	
+
 	if len(resp.Data) != 2 {
 		t.Errorf("expected 2 items, got %d", len(resp.Data))
 	}
