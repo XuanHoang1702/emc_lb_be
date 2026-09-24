@@ -44,7 +44,7 @@ func main() {
 		logger.Error("failed to create mongo client", "error", err)
 		os.Exit(1)
 	}
-	defer mongoClient.Disconnect(context.Background())
+	defer func() { _ = mongoClient.Disconnect(context.Background()) }()
 	mongoDB := mongoClient.Database(cfg.MongoDB.Database)
 
 	redisClient, err := utils.NewRedisClientFromConfig(&cfg.Redis)
@@ -52,7 +52,7 @@ func main() {
 		logger.Error("failed to create redis client", "error", err)
 		os.Exit(1)
 	}
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	redisOpt := asynq.RedisClientOpt{
 		Addr:     cfg.Redis.Host + ":" + cfg.Redis.Port,

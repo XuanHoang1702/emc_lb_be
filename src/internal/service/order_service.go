@@ -241,7 +241,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 		if err != nil {
 			return nil, res.WrapError(err, "Failed to start database transaction", erres.CommonInternal)
 		}
-		defer tx.Rollback(ctx)
+		defer func() { _ = tx.Rollback(ctx) }()
 
 		txRepo := s.orderRepository.WithTx(tx)
 		if err := coreLogic(ctx, txRepo); err != nil {
@@ -439,7 +439,7 @@ func (s *orderService) cancelOrderAtomic(ctx context.Context, order entities.Ord
 		if err != nil {
 			return res.WrapError(err, "Failed to start database session", erres.CommonInternal)
 		}
-		defer tx.Rollback(ctx)
+		defer func() { _ = tx.Rollback(ctx) }()
 
 		txRepo := s.orderRepository.WithTx(tx)
 		if err := coreLogic(ctx, txRepo); err != nil {
@@ -686,7 +686,7 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 		if err != nil {
 			return nil, res.WrapError(err, "Failed to start database transaction", erres.CommonInternal)
 		}
-		defer tx.Rollback(ctx)
+		defer func() { _ = tx.Rollback(ctx) }()
 
 		txRepo := s.orderRepository.WithTx(tx)
 		if err := coreLogic(ctx, txRepo); err != nil {

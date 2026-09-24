@@ -86,7 +86,7 @@ func (m *RBACManager) HasPermission(roleCode string, permissionCode string) bool
 func (m *RBACManager) startCacheInvalidationListener() {
 	ctx := context.Background()
 	pubsub := m.redisClient.Subscribe(ctx, "emc_lb:rbac_cache_invalidate")
-	defer pubsub.Close()
+	defer func() { _ = pubsub.Close() }()
 
 	ch := pubsub.Channel()
 	for msg := range ch {
