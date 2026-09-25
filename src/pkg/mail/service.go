@@ -9,7 +9,6 @@ import (
 	"net/smtp"
 
 	appconfig "emc_lb/src/pkg/config"
-	"emc_lb/src/pkg/utils"
 )
 
 //go:embed templates/*.html
@@ -17,6 +16,8 @@ var templateFS embed.FS
 
 type Mailer interface {
 	SendEmailVerificationOTP(context.Context, string, string, string, int) error
+	SendPasswordResetOTP(context.Context, string, string, string, int) error
+	SendOrderPaymentSuccessEmail(ctx context.Context, recipientEmail string, userName string, invoiceNumber string, amountPaid float64) error
 }
 
 type SMTPMailer struct {
@@ -35,22 +36,45 @@ type verificationOTPEmailData struct {
 	ExpiresInMinutes int
 }
 
-func NewSMTPMailer() Mailer {
-	// Prefer typed config; fall back to env vars if config not yet loaded
-	host := utils.GetEnv("SMTP_HOST", "")
-	port := utils.GetEnv("SMTP_PORT", "")
-	username := utils.GetEnv("SMTP_USERNAME", "")
-	password := utils.GetEnv("SMTP_PASSWORD", "")
-	fromEmail := utils.GetEnv("SMTP_FROM_EMAIL", "")
-	fromName := utils.GetEnv("SMTP_FROM_NAME", "EMC LB")
+type passwordResetOTPEmailData struct {
+	UserName         string
+	OTP              string
+	ExpiresInMinutes int
+}
 
-	if cfg, err := appconfig.Load(); err == nil {
-		host = cfg.Mail.Host
-		port = fmt.Sprintf("%d", cfg.Mail.Port)
-		username = cfg.Mail.Username
-		password = cfg.Mail.Password
-		fromEmail = cfg.Mail.FromEmail
-		fromName = cfg.Mail.FromName
+type paymentSuccessEmailData struct {
+	CustomerName  string
+	InvoiceNumber string
+	AmountPaid    string
+}
+
+func NewMailer() Mailer {
+	cfg, err := appconfig.Load()
+	if err != nil {
+		return noopMailer{}
+	}
+
+	switch cfg.Mail.Provider {
+	case "resend":
+		return NewResendMailer(cfg.Mail.ResendAPIKey, cfg.Mail.ResendFrom)
+	case "smtp":
+		return newSMTPMailer(cfg)
+	default:
+		// Unknown provider — try SMTP as fallback
+		return newSMTPMailer(cfg)
+	}
+}
+
+func newSMTPMailer(cfg *appconfig.AppConfig) Mailer {
+	host := cfg.Mail.Host
+	port := fmt.Sprintf("%d", cfg.Mail.Port)
+	username := cfg.Mail.Username
+	password := cfg.Mail.Password
+	fromEmail := cfg.Mail.FromEmail
+	fromName := cfg.Mail.FromName
+
+	if fromName == "" {
+		fromName = "EMC LB"
 	}
 
 	if host == "" || port == "" || username == "" || password == "" || fromEmail == "" {
@@ -67,6 +91,14 @@ func NewSMTPMailer() Mailer {
 }
 
 func (noopMailer) SendEmailVerificationOTP(context.Context, string, string, string, int) error {
+	return nil
+}
+
+func (noopMailer) SendPasswordResetOTP(context.Context, string, string, string, int) error {
+	return nil
+}
+
+func (noopMailer) SendOrderPaymentSuccessEmail(context.Context, string, string, string, float64) error {
 	return nil
 }
 
@@ -88,8 +120,72 @@ func (m *SMTPMailer) SendEmailVerificationOTP(_ context.Context, recipientEmail 
 	return smtp.SendMail(m.address, m.auth, m.fromEmail, []string{recipientEmail}, []byte(message))
 }
 
+func (m *SMTPMailer) SendPasswordResetOTP(_ context.Context, recipientEmail string, userName string, otp string, expiresInMinutes int) error {
+	if m == nil || !m.enabled {
+		return nil
+	}
+
+	htmlBody, err := renderPasswordResetOTPEmail(passwordResetOTPEmailData{
+		UserName:         userName,
+		OTP:              otp,
+		ExpiresInMinutes: expiresInMinutes,
+	})
+	if err != nil {
+		return err
+	}
+
+	message := buildHTMLMessage(m.fromName, m.fromEmail, recipientEmail, "Reset your password", htmlBody)
+	return smtp.SendMail(m.address, m.auth, m.fromEmail, []string{recipientEmail}, []byte(message))
+}
+
 func renderVerificationOTPEmail(data verificationOTPEmailData) (string, error) {
 	tpl, err := template.ParseFS(templateFS, "templates/email_verification_otp.html")
+	if err != nil {
+		return "", err
+	}
+
+	var buffer bytes.Buffer
+	if err := tpl.Execute(&buffer, data); err != nil {
+		return "", err
+	}
+
+	return buffer.String(), nil
+}
+
+func renderPasswordResetOTPEmail(data passwordResetOTPEmailData) (string, error) {
+	tpl, err := template.ParseFS(templateFS, "templates/password_reset_otp.html")
+	if err != nil {
+		return "", err
+	}
+
+	var buffer bytes.Buffer
+	if err := tpl.Execute(&buffer, data); err != nil {
+		return "", err
+	}
+
+	return buffer.String(), nil
+}
+
+func (m *SMTPMailer) SendOrderPaymentSuccessEmail(_ context.Context, recipientEmail string, userName string, invoiceNumber string, amountPaid float64) error {
+	if m == nil || !m.enabled {
+		return nil
+	}
+
+	htmlBody, err := renderPaymentSuccessEmail(paymentSuccessEmailData{
+		CustomerName:  userName,
+		InvoiceNumber: invoiceNumber,
+		AmountPaid:    fmt.Sprintf("%.2f", amountPaid),
+	})
+	if err != nil {
+		return err
+	}
+
+	message := buildHTMLMessage(m.fromName, m.fromEmail, recipientEmail, "Payment Successful", htmlBody)
+	return smtp.SendMail(m.address, m.auth, m.fromEmail, []string{recipientEmail}, []byte(message))
+}
+
+func renderPaymentSuccessEmail(data paymentSuccessEmailData) (string, error) {
+	tpl, err := template.ParseFS(templateFS, "templates/payment_success.html")
 	if err != nil {
 		return "", err
 	}

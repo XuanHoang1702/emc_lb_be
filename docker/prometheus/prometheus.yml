@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'emc_lb_api'
+    static_configs:
+      - targets: 
+        - 'emc_api_node_1:8080'
+        - 'emc_api_node_2:8080'
+        - 'emc_api_node_3:8080'
+
+  - job_name: 'telegraf'
+    static_configs:
+      - targets: ['telegraf:9273']
+
+  - job_name: 'postgres_exporter'
+    static_configs:
+      - targets: ['postgres_exporter:9187']
+
+  - job_name: 'redis_exporter'
+    static_configs:
+      - targets: ['redis_exporter:9121']
+
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['node_exporter:9100']

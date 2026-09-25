@@ -27,16 +27,18 @@ type AppConfig struct {
 	AWS      AWSSettings
 	Mail     MailSettings
 	Payment  PaymentSettings
+	Search   SearchSettings
+	Cache    CacheSettings
 }
 
 type AppSettings struct {
-	Port          string
-	Mode          string // "debug" | "release"
-	SystemSecret  string
-	APIKey        string
-	CORSOrigins   string
-	LogLevel      string // "debug" | "info" | "warn" | "error"
-	MigrationsDir string
+	Port         string
+	Mode         string // "debug" | "release"
+	SystemSecret string
+	APIKey       string
+	CORSOrigins     string
+	LogLevel        string // "debug" | "info" | "warn" | "error"
+	OrderPaymentTTL time.Duration
 }
 
 type PostgresSettings struct {
@@ -62,11 +64,22 @@ type RedisSettings struct {
 	Password string
 }
 
+type SearchSettings struct {
+	Host      string
+	MasterKey string
+}
+
 type JWTSettings struct {
 	AccessSecret  string
 	RefreshSecret string
 	AccessTTL     time.Duration
 	RefreshTTL    time.Duration
+}
+
+type CacheSettings struct {
+	CategoryTTL      time.Duration
+	BrandTTL         time.Duration
+	ProductDetailTTL time.Duration
 }
 
 type AWSSettings struct {
@@ -78,13 +91,16 @@ type AWSSettings struct {
 }
 
 type MailSettings struct {
-	Host      string
-	Port      int
-	Username  string
-	Password  string
-	FromEmail string
-	FromName  string
-	OTPTTl    time.Duration
+	Provider     string // "smtp" | "resend"
+	Host         string
+	Port         int
+	Username     string
+	Password     string
+	FromEmail    string
+	FromName     string
+	ResendAPIKey string
+	ResendFrom   string
+	OTPTTl       time.Duration
 }
 
 type PaymentSettings struct {
@@ -94,6 +110,7 @@ type PaymentSettings struct {
 	SepaySuccessURL string
 	SepayErrorURL   string
 	SepayCancelURL  string
+	SepayAllowedCallbackHosts string
 }
 
 // Get returns the singleton AppConfig. Panics on first call if config is invalid.
@@ -126,13 +143,13 @@ func load() (*AppConfig, error) {
 
 	cfg := &AppConfig{
 		App: AppSettings{
-			Port:          getEnv("APP_PORT", "8080"),
-			Mode:          getEnv("GIN_MODE", "debug"),
-			SystemSecret:  getEnv("SYSTEM_SECRET", ""),
-			APIKey:        getEnv("API_KEY", ""),
-			CORSOrigins:   getEnv("CORS_ALLOWED_ORIGINS", "*"),
-			LogLevel:      getEnv("LOG_LEVEL", "info"),
-			MigrationsDir: getEnv("MIGRATIONS_DIR", "src/internal/db/migrations"),
+			Port:         getEnv("APP_PORT", "8080"),
+			Mode:         getEnv("GIN_MODE", "debug"),
+			SystemSecret:    getEnv("SYSTEM_SECRET", ""),
+			APIKey:          getEnv("API_KEY", ""),
+			CORSOrigins:     getEnv("CORS_ALLOWED_ORIGINS", "*"),
+			LogLevel:        getEnv("LOG_LEVEL", "info"),
+			OrderPaymentTTL: getEnvDuration("ORDER_PAYMENT_TIMEOUT", 15*time.Minute),
 		},
 		Postgres: PostgresSettings{
 			Host:     getEnv("POSTGRES_HOST", "localhost"),
@@ -156,9 +173,13 @@ func load() (*AppConfig, error) {
 			Port:     getEnv("REDIS_PORT", "6379"),
 			Password: getEnv("REDIS_PASSWORD", ""),
 		},
+		Search: SearchSettings{
+			Host:      getEnv("MEILISEARCH_HOST", "http://localhost:7700"),
+			MasterKey: getEnv("MEILISEARCH_MASTER_KEY", ""),
+		},
 		JWT: JWTSettings{
-			AccessSecret:  getEnv("ACCESS_TOKEN_SECRET", "access-secret"),
-			RefreshSecret: getEnv("REFRESH_TOKEN_SECRET", "refresh-secret"),
+			AccessSecret:  getEnv("ACCESS_TOKEN_SECRET", ""),
+			RefreshSecret: getEnv("REFRESH_TOKEN_SECRET", ""),
 			AccessTTL:     getEnvDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 			RefreshTTL:    getEnvDuration("REFRESH_TOKEN_TTL", 7*24*time.Hour),
 		},
@@ -170,21 +191,30 @@ func load() (*AppConfig, error) {
 			AvatarBucket:    getEnv("S3_AVATAR_BUCKET", "emc-lb-avatars"),
 		},
 		Mail: MailSettings{
-			Host:      getEnv("SMTP_HOST", ""),
-			Port:      getEnvInt("SMTP_PORT", 587),
-			Username:  getEnv("SMTP_USERNAME", ""),
-			Password:  getEnv("SMTP_PASSWORD", ""),
-			FromEmail: getEnv("SMTP_FROM_EMAIL", ""),
-			FromName:  getEnv("SMTP_FROM_NAME", "EMC LB"),
-			OTPTTl:    getEnvDuration("EMAIL_OTP_TTL", 10*time.Minute),
+			Provider:     getEnv("MAIL_PROVIDER", "smtp"),
+			Host:         getEnv("SMTP_HOST", ""),
+			Port:         getEnvInt("SMTP_PORT", 587),
+			Username:     getEnv("SMTP_USERNAME", ""),
+			Password:     getEnv("SMTP_PASSWORD", ""),
+			FromEmail:    getEnv("SMTP_FROM_EMAIL", ""),
+			FromName:     getEnv("SMTP_FROM_NAME", "EMC LB"),
+			ResendAPIKey: getEnv("RESEND_API_KEY", ""),
+			ResendFrom:   getEnv("RESEND_FROM", ""),
+			OTPTTl:       getEnvDuration("EMAIL_OTP_TTL", 10*time.Minute),
 		},
 		Payment: PaymentSettings{
 			SepayEnv:        getEnv("SEPAY_ENV", "sandbox"),
-			SepayMerchantID: getEnv("CLIENT_KEY", ""),
-			SepaySecretKey:  getEnv("SECRET_KEY", ""),
+			SepayMerchantID: getEnv("SEPAY_MERCHANT_ID", ""),
+			SepaySecretKey:  getEnv("SEPAY_SECRET_KEY", ""),
 			SepaySuccessURL: getEnv("SEPAY_SUCCESS_URL", ""),
 			SepayErrorURL:   getEnv("SEPAY_ERROR_URL", ""),
 			SepayCancelURL:  getEnv("SEPAY_CANCEL_URL", ""),
+			SepayAllowedCallbackHosts: getEnv("SEPAY_ALLOWED_CALLBACK_HOSTS", ""),
+		},
+		Cache: CacheSettings{
+			CategoryTTL:      getEnvDuration("CACHE_CATEGORY_TTL", 24*time.Hour),
+			BrandTTL:         getEnvDuration("CACHE_BRAND_TTL", 24*time.Hour),
+			ProductDetailTTL: getEnvDuration("CACHE_PRODUCT_DETAIL_TTL", 15*time.Minute),
 		},
 	}
 
@@ -196,7 +226,7 @@ func load() (*AppConfig, error) {
 }
 
 // validate checks critical required fields. Only fields that will cause crashes
-// at runtime if missing are validated here — others are optional.
+// or security holes at runtime if missing are validated here — others are optional.
 func validate(cfg *AppConfig) error {
 	if cfg.App.SystemSecret == "" {
 		return fmt.Errorf("SYSTEM_SECRET is required")
@@ -204,6 +234,24 @@ func validate(cfg *AppConfig) error {
 
 	if cfg.MongoDB.URI == "" {
 		return fmt.Errorf("MONGO_URI is required")
+	}
+
+	// JWT secrets must never fall back to known public defaults, or any
+	// attacker can forge access/refresh tokens.
+	if cfg.JWT.AccessSecret == "" {
+		return fmt.Errorf("ACCESS_TOKEN_SECRET is required")
+	}
+	if cfg.JWT.RefreshSecret == "" {
+		return fmt.Errorf("REFRESH_TOKEN_SECRET is required")
+	}
+	for name, secret := range map[string]string{
+		"ACCESS_TOKEN_SECRET":  cfg.JWT.AccessSecret,
+		"REFRESH_TOKEN_SECRET": cfg.JWT.RefreshSecret,
+	} {
+		switch secret {
+		case "access-secret", "refresh-secret":
+			return fmt.Errorf("%s must not use the default placeholder value", name)
+		}
 	}
 
 	return nil

@@ -26,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"github.com/meilisearch/meilisearch-go"
 )
 
 // App holds all long-lived server resources and exposes Run / Close.
@@ -34,6 +35,7 @@ type App struct {
 	pgPool            *pgxpool.Pool
 	mongoClient       *mongo.Client
 	redisClient       *redis.Client
+	meilisearchClient meilisearch.ServiceManager
 	queries           *sqlc.Queries
 	refreshTokenStore cache.RefreshTokenStore
 	avatarStorage     storage.AvatarStorage
@@ -71,7 +73,7 @@ func New() (*App, error) {
 	}()
 
 	// ── 4. Auto-migration ────────────────────────────────────────────────────
-	if err = migrate.Run(cfg.Postgres.DatabaseURL(), cfg.App.MigrationsDir); err != nil {
+	if err = migrate.Run(cfg.Postgres.DatabaseURL()); err != nil {
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
@@ -94,6 +96,12 @@ func New() (*App, error) {
 	}
 	closers = append(closers, func() { _ = redisClient.Close() })
 
+	meilisearchClient, err := utils.NewMeilisearchClientFromConfig(&cfg.Search)
+	if err != nil {
+		return nil, fmt.Errorf("create meilisearch client: %w", err)
+	}
+	// meilisearch client doesn't need explicit close
+
 	avatarStorage, err := storage.NewLocalStackS3Storage(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("create avatar storage: %w", err)
@@ -105,10 +113,10 @@ func New() (*App, error) {
 
 	// ── 6. Shared services ───────────────────────────────────────────────────
 	queries := sqlc.New(logs.WrapDBTX(pgPool))
-	auth.InitRBACManager(queries)
+	auth.InitRBACManager(queries, redisClient)
 	refreshTokenStore := cache.NewRedisRefreshTokenStore(redisClient)
 	emailOTPStore := cache.NewRedisEmailOTPStore(redisClient)
-	mailer := mail.NewSMTPMailer()
+	mailer := mail.NewMailer()
 	mongoDB := mongoClient.Database(cfg.MongoDB.Database)
 
 	redisOpt := asynq.RedisClientOpt{
@@ -125,6 +133,7 @@ func New() (*App, error) {
 		MongoClient:       mongoClient,
 		MongoDB:           mongoDB,
 		RedisClient:       redisClient,
+		SearchClient:      meilisearchClient,
 		RefreshTokenStore: refreshTokenStore,
 		EmailOTPStore:     emailOTPStore,
 		AvatarStorage:     avatarStorage,
@@ -141,23 +150,24 @@ func New() (*App, error) {
 		productMod *module.ProductModule
 	)
 
-	couponMod = module.NewCouponModule(mongoDB)
-	productMod = module.NewProductModule(mongoDB, redisClient)
+	couponMod = module.NewCouponModule(mongoDB, redisClient)
+	productMod = module.NewProductModule(mongoDB, redisClient, meilisearchClient)
 
 	categoryMod, err := module.NewCategoryModule(mongoDB, redisClient)
 	if err != nil {
 		return nil, fmt.Errorf("create category module: %w", err)
 	}
-	brandMod, err := module.NewBrandModule(mongoDB)
+	brandMod, err := module.NewBrandModule(mongoDB, redisClient)
 	if err != nil {
 		return nil, fmt.Errorf("create brand module: %w", err)
 	}
 
-	orderMod := module.NewOrderModule(mongoDB, mongoClient, couponMod.ServiceInstance(), redisClient, productMod.CacheStore())
-	paymentMod := module.NewPaymentModule(orderMod.Service())
+	orderMod := module.NewOrderModule(mongoDB, pgPool, queries, couponMod.ServiceInstance(), redisClient, productMod.CacheStore(), taskDistributor)
+	paymentMod := module.NewPaymentModule(cfg, orderMod.Service())
 	cartMod := module.NewCartModule(mongoDB, productMod.Repository(), couponMod.ServiceInstance())
 	shopMod := module.NewShopModule(mongoDB, redisClient)
-	userMod := module.NewUserModule(cfg, queries, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
+	userMod := module.NewUserModule(cfg, pgPool, queries, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
+	rbacMod := module.NewRBACModule(cfg, queries)
 
 	_ = deps // deps available for future module factories via registry
 
@@ -165,6 +175,7 @@ func New() (*App, error) {
 	router := gin.New()
 	router.Use(
 		middleware.RequestIDMiddleware(),
+		middleware.SecurityHeadersMiddleware(),
 		middleware.CORSMiddleware(),
 		middleware.RequestLogMiddleware(),
 		middleware.AcceptLanguageMiddleware(),
@@ -181,6 +192,7 @@ func New() (*App, error) {
 		paymentMod.Routes(),
 		cartMod.Route,
 		couponMod.Routes(),
+		rbacMod.Routes(),
 	}, redisClient, pgPool, mongoClient, cfg)
 
 	// ── 10. HTTP server ──────────────────────────────────────────────────────
@@ -199,6 +211,7 @@ func New() (*App, error) {
 		pgPool:            pgPool,
 		mongoClient:       mongoClient,
 		redisClient:       redisClient,
+		meilisearchClient: meilisearchClient,
 		queries:           queries,
 		refreshTokenStore: refreshTokenStore,
 		avatarStorage:     avatarStorage,

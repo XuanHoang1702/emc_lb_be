@@ -1,5 +1,5 @@
 # Builder stage
-FROM golang:1.25.13-bookworm AS builder
+FROM golang:alpine AS builder
 WORKDIR /app
 
 # Cache Go modules

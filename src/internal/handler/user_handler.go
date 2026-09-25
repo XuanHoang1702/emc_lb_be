@@ -13,6 +13,7 @@ import (
 	"emc_lb/src/pkg/errors"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type UserHandler struct {
@@ -70,6 +71,8 @@ func (h *UserHandler) HandleLogin(ctx *gin.Context) {
 		return
 	}
 
+	loginRequest.ClientIP = ctx.ClientIP()
+
 	data, err := h.userService.Login(ctx.Request.Context(), loginRequest)
 	if err != nil {
 		res.Error(ctx, err)
@@ -119,6 +122,16 @@ func (h *UserHandler) HandleRefreshToken(ctx *gin.Context) {
 // @Security     BearerAuth
 // @Router       /api/v1/user/logout [post]
 func (h *UserHandler) HandleLogout(ctx *gin.Context) {
+	userID := ctx.GetString(middleware.ContextUserIDKey)
+	if userID == "" {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid access token",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
 	var logoutRequest entities.LogoutUserRequest
 	err := validation.BindJSON(ctx, &logoutRequest, errors.UserInvalidFormat)
 	if err != nil {
@@ -126,7 +139,7 @@ func (h *UserHandler) HandleLogout(ctx *gin.Context) {
 		return
 	}
 
-	if err := h.userService.Logout(ctx.Request.Context(), logoutRequest); err != nil {
+	if err := h.userService.Logout(ctx.Request.Context(), userID, logoutRequest); err != nil {
 		res.Error(ctx, err)
 		return
 	}
@@ -162,24 +175,28 @@ func (h *UserHandler) HandleVerifyEmailOTP(ctx *gin.Context) {
 
 // HandleDelete godoc
 // @Summary      Delete account
-// @Description  Delete the user account
+// @Description  Delete the currently authenticated user's account
 // @Tags         Users
 // @Accept       json
 // @Produce      json
-// @Param        body body entities.DeleteUserRequest true "Delete confirmation"
 // @Success      200  {object}  res.APIResponse
 // @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Failure      404  {object}  res.APIResponse
 // @Security     BearerAuth
 // @Router       /api/v1/user/delete [post]
 func (h *UserHandler) HandleDelete(ctx *gin.Context) {
-	var deleteRequest entities.DeleteUserRequest
-	err := validation.BindJSON(ctx, &deleteRequest, errors.UserInvalidFormat)
+	userID, err := uuid.Parse(ctx.GetString(middleware.ContextUserIDKey))
 	if err != nil {
-		res.Error(ctx, err)
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid access token",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
 		return
 	}
 
-	if err := h.userService.Delete(ctx.Request.Context(), deleteRequest); err != nil {
+	if err := h.userService.Delete(ctx.Request.Context(), userID); err != nil {
 		res.Error(ctx, err)
 		return
 	}
@@ -245,4 +262,189 @@ func (h *UserHandler) HandleUpsertAvatar(ctx *gin.Context) {
 	}
 
 	res.Success(ctx, http.StatusOK, data)
+}
+
+// HandleGetProfile godoc
+// @Summary      Get profile
+// @Description  Get current user profile
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Failure      404  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/user/me [get]
+func (h *UserHandler) HandleGetProfile(ctx *gin.Context) {
+	userIDStr := ctx.GetString(middleware.ContextUserIDKey)
+	if userIDStr == "" {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid access token",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid user ID",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
+	profile, err := h.userService.GetProfile(ctx.Request.Context(), userID)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, profile)
+}
+
+// HandleChangePassword godoc
+// @Summary      Change password
+// @Description  Change the currently authenticated user's password
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.ChangePasswordRequest true "Change Password Request"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/user/change-password [post]
+func (h *UserHandler) HandleChangePassword(ctx *gin.Context) {
+	userIDStr := ctx.GetString(middleware.ContextUserIDKey)
+	if userIDStr == "" {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid access token",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid user ID",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
+	var req entities.ChangePasswordRequest
+	err = validation.BindJSON(ctx, &req, errors.UserInvalidFormat)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	if err := h.userService.ChangePassword(ctx.Request.Context(), userID, req); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, "success_password_changed")
+}
+
+// HandleAdminChangePassword godoc
+// @Summary      Admin Change Password
+// @Description  Admin changes another user/partner's password
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        uuid path string true "Target User UUID"
+// @Param        body body entities.AdminChangePasswordRequest true "New Password Request"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Failure      403  {object}  res.APIResponse
+// @Failure      404  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/user/admin/change-password/{uuid} [post]
+func (h *UserHandler) HandleAdminChangePassword(ctx *gin.Context) {
+	targetUUIDStr := ctx.Param("uuid")
+	targetUUID, err := uuid.Parse(targetUUIDStr)
+	if err != nil {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid target user UUID",
+			Code:       errors.UserInvalidFormat,
+			StatusCode: http.StatusBadRequest,
+		})
+		return
+	}
+
+	var req entities.AdminChangePasswordRequest
+	err = validation.BindJSON(ctx, &req, errors.UserInvalidFormat)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	callerRole := ctx.GetString(middleware.ContextRoleKey)
+	if err := h.userService.AdminChangePassword(ctx.Request.Context(), callerRole, targetUUID, req); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, "success_admin_password_changed")
+}
+
+// HandleForgotPassword godoc
+// @Summary      Forgot Password
+// @Description  Request a password reset OTP sent to email
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.ForgotPasswordRequest true "Forgot Password Request"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Router       /api/v1/user/forgot-password [post]
+func (h *UserHandler) HandleForgotPassword(ctx *gin.Context) {
+	var req entities.ForgotPasswordRequest
+	err := validation.BindJSON(ctx, &req, errors.UserInvalidFormat)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	if err := h.userService.ForgotPassword(ctx.Request.Context(), req); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, "success_forgot_password")
+}
+
+// HandleResetPassword godoc
+// @Summary      Reset Password
+// @Description  Reset password using OTP from email
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Param        body body entities.ResetPasswordRequest true "Reset Password Request"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Router       /api/v1/user/reset-password [post]
+func (h *UserHandler) HandleResetPassword(ctx *gin.Context) {
+	var req entities.ResetPasswordRequest
+	err := validation.BindJSON(ctx, &req, errors.UserInvalidFormat)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	if err := h.userService.ResetPassword(ctx.Request.Context(), req); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, "success_password_reset")
 }

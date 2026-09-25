@@ -25,6 +25,7 @@ func (r *OrderRoute) RegisterProtected(router gin.IRouter) {
 		orderGroup.POST("", r.orderHandler.HandleCreate)
 		orderGroup.GET("/my", r.orderHandler.HandleMyOrders)
 		orderGroup.GET("/:id", r.orderHandler.HandleGetOrder)
+		orderGroup.POST("/:id/cancel", r.orderHandler.HandleCancelOrder)
 
 		// Admin only
 		orderGroup.GET("", middleware.RequirePermission("manage_orders"), r.orderHandler.HandleGetAllOrders)

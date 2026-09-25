@@ -10,15 +10,16 @@ import (
 	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/storage"
 	"emc_lb/src/pkg/worker"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type UserModule struct {
 	routes route.Route
 }
 
-func NewUserModule(cfg *config.AppConfig, queries sqlc.Querier, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) *UserModule {
-	userRepository := repository.NewUserRepository(queries)
-	userService := service.NewUserService(cfg, userRepository, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
+func NewUserModule(cfg *config.AppConfig, pgPool *pgxpool.Pool, queries sqlc.Querier, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) *UserModule {
+	userRepository := repository.NewUserRepository(pgPool, queries)
+	userService := service.NewUserService(cfg, pgPool, userRepository, refreshTokenStore, emailOTPStore, taskDistributor, avatarStorage)
 	userHandler := handler.NewUserHandler(userService)
 	userRoute := route.NewUserRoute(userHandler)
 

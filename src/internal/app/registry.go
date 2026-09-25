@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"github.com/meilisearch/meilisearch-go"
 )
 
 // AppDeps is a dependency container holding all shared resources.
@@ -30,6 +31,9 @@ type AppDeps struct {
 
 	// Redis
 	RedisClient *redis.Client
+
+	// Search
+	SearchClient meilisearch.ServiceManager
 
 	// Cache stores (built on Redis)
 	RefreshTokenStore cache.RefreshTokenStore

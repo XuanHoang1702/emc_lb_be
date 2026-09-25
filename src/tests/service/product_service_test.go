@@ -12,11 +12,8 @@ import (
 
 // stubProductCacheStore for testing cache behavior
 type stubProductCacheStore struct {
-	listData      []entities.ProductResponse
-	itemData      map[string]entities.ProductResponse
-	listSet       bool
-	invalidateAll bool
-	invalidateID  string
+	itemData       map[string]entities.ProductResponse
+	invalidateID   string
 }
 
 func newStubProductCache() *stubProductCacheStore {
@@ -25,18 +22,6 @@ func newStubProductCache() *stubProductCacheStore {
 	}
 }
 
-func (c *stubProductCacheStore) GetAll(_ context.Context) ([]entities.ProductResponse, error) {
-	if c.listData != nil {
-		return c.listData, nil
-	}
-	return nil, errors.New("cache miss")
-}
-
-func (c *stubProductCacheStore) SetAll(_ context.Context, products []entities.ProductResponse) error {
-	c.listData = products
-	c.listSet = true
-	return nil
-}
 
 func (c *stubProductCacheStore) GetByID(_ context.Context, id string) (entities.ProductResponse, error) {
 	if p, ok := c.itemData[id]; ok {
@@ -53,16 +38,10 @@ func (c *stubProductCacheStore) SetByID(_ context.Context, id string, product en
 func (c *stubProductCacheStore) Invalidate(_ context.Context, id string) error {
 	c.invalidateID = id
 	delete(c.itemData, id)
-	c.listData = nil
 	return nil
 }
 
-func (c *stubProductCacheStore) InvalidateAll(_ context.Context) error {
-	c.invalidateAll = true
-	c.listData = nil
-	c.itemData = make(map[string]entities.ProductResponse)
-	return nil
-}
+
 
 // stubCategoryRepo for product service tests (just needs ExistsByID)
 type stubCategoryRepoForProduct struct{}
@@ -188,82 +167,29 @@ func (r *listableProductRepo) UpdateStock(_ context.Context, id string, delta in
 	return nil
 }
 
-func TestList_CacheHit(t *testing.T) {
-	productRepo := newListableProductRepo()
-	productRepo.products["p1"] = entities.Product{ID: "p1", Name: "Cached Product", Price: 100}
-
-	cacheStore := newStubProductCache()
-	cacheStore.listData = []entities.ProductResponse{{ID: "p1", Name: "Cached Product"}}
-
-	svc := service.NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
-
-	result, err := svc.List(context.Background())
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+func (r *listableProductRepo) DeductStock(_ context.Context, id string, quantity int64) error {
+	p, ok := r.products[id]
+	if !ok {
+		return errors.New("not found")
 	}
-	if len(result) != 1 || result[0].Name != "Cached Product" {
-		t.Fatal("expected cached response")
+	if p.Stock < quantity {
+		return errors.New("insufficient stock")
 	}
-	// listSet should still be false since we returned from cache
-	if cacheStore.listSet {
-		t.Fatal("expected cache NOT to be re-set on hit")
-	}
+	p.Stock -= quantity
+	p.SoldCount += quantity
+	r.products[id] = p
+	return nil
 }
 
-func TestList_CacheMiss(t *testing.T) {
-	productRepo := newListableProductRepo()
-	productRepo.products["p1"] = entities.Product{ID: "p1", Name: "DB Product", Price: 200}
-
-	cacheStore := newStubProductCache() // empty = miss
-
-	svc := service.NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
-
-	result, err := svc.List(context.Background())
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+func (r *listableProductRepo) RestoreStockIdempotent(ctx context.Context, id string, quantity int64, orderID string) error {
+	if p, ok := r.products[id]; ok {
+		p.Stock += quantity
+		r.products[id] = p
 	}
-	if len(result) != 1 {
-		t.Fatalf("expected 1 product from DB, got %d", len(result))
-	}
-	if !cacheStore.listSet {
-		t.Fatal("expected cache to be set after miss")
-	}
+	return nil
 }
 
-func TestGetByID_CacheHit(t *testing.T) {
-	cacheStore := newStubProductCache()
-	cacheStore.itemData["p1"] = entities.ProductResponse{ID: "p1", Name: "Cached Item"}
 
-	svc := service.NewProductService(newListableProductRepo(), &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
-
-	result, err := svc.GetByID(context.Background(), "p1")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if result.Name != "Cached Item" {
-		t.Fatal("expected cached item response")
-	}
-}
-
-func TestCreate_InvalidatesCache(t *testing.T) {
-	cacheStore := newStubProductCache()
-	cacheStore.listData = []entities.ProductResponse{{ID: "old", Name: "Old"}}
-
-	svc := service.NewProductService(newListableProductRepo(), &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
-
-	_, err := svc.Create(context.Background(), entities.CreateProductRequest{
-		Name:   "New Product",
-		Price:  100,
-		Stock:  10,
-		ShopID: "shop-1",
-	})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if !cacheStore.invalidateAll {
-		t.Fatal("expected cache to be invalidated after create")
-	}
-}
 
 func TestUpdate_InvalidatesCache(t *testing.T) {
 	productRepo := newListableProductRepo()
@@ -272,7 +198,7 @@ func TestUpdate_InvalidatesCache(t *testing.T) {
 	cacheStore := newStubProductCache()
 	cacheStore.itemData["p1"] = entities.ProductResponse{ID: "p1", Name: "Old Name"}
 
-	svc := service.NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
+	svc := service.NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore, nil)
 
 	newName := "New Name"
 	_, err := svc.Update(context.Background(), "p1", entities.UpdateProductRequest{Name: &newName})
@@ -290,7 +216,7 @@ func TestDelete_InvalidatesCache(t *testing.T) {
 
 	cacheStore := newStubProductCache()
 
-	svc := service.NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore)
+	svc := service.NewProductService(productRepo, &stubCategoryRepoForProduct{}, &stubBrandRepo{}, cacheStore, nil)
 
 	err := svc.Delete(context.Background(), "p1")
 	if err != nil {

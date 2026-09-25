@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/entities"
@@ -164,5 +165,51 @@ func (h *ProductHandler) HandleDelete(ctx *gin.Context) {
 
 	res.Success(ctx, http.StatusOK, map[string]interface{}{
 		"message": "Product deleted successfully",
+	})
+}
+
+// HandleSearch godoc
+// @Summary      Search products
+// @Description  Search products using full-text search with typo tolerance
+// @Tags         Products
+// @Produce      json
+// @Param        q      query     string  false  "Search query"
+// @Param        limit  query     int     false  "Limit (default 20)"
+// @Param        offset query     int     false  "Offset (default 0)"
+// @Success      200    {object}  res.APIResponse
+// @Failure      500    {object}  res.APIResponse
+// @Router       /api/v1/search/products [get]
+func (h *ProductHandler) HandleSearch(ctx *gin.Context) {
+	query := ctx.Query("q")
+	
+	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
+
+	result, err := h.productService.Search(ctx.Request.Context(), query, limit, offset)
+	if err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, result)
+}
+
+// HandleSync godoc
+// @Summary      Sync products to search engine
+// @Description  Full sync of products to Meilisearch
+// @Tags         Products
+// @Produce      json
+// @Success      200    {object}  res.APIResponse
+// @Failure      500    {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/search/sync [post]
+func (h *ProductHandler) HandleSync(ctx *gin.Context) {
+	if err := h.productService.SyncAll(ctx.Request.Context()); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, map[string]string{
+		"message": "Sync triggered successfully",
 	})
 }

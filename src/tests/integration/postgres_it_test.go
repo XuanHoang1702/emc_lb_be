@@ -86,16 +86,40 @@ func runMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool, dir st
 	}
 }
 
-// splitSQLStatements splits a migration file into individual statements by ";".
-// Safe for this schema (no string literals containing semicolons).
 func splitSQLStatements(sql string) []string {
 	var stmts []string
-	for _, part := range strings.Split(sql, ";") {
-		s := strings.TrimSpace(part)
-		if s != "" {
-			stmts = append(stmts, s)
+	var current strings.Builder
+	inDollarQuote := false
+
+	for i := 0; i < len(sql); i++ {
+		c := sql[i]
+
+		// check for $$
+		if c == '$' && i+1 < len(sql) && sql[i+1] == '$' {
+			inDollarQuote = !inDollarQuote
+			current.WriteByte(c)
+			current.WriteByte(c)
+			i++
+			continue
 		}
+
+		if c == ';' && !inDollarQuote {
+			s := strings.TrimSpace(current.String())
+			if s != "" {
+				stmts = append(stmts, s)
+			}
+			current.Reset()
+			continue
+		}
+
+		current.WriteByte(c)
 	}
+
+	s := strings.TrimSpace(current.String())
+	if s != "" {
+		stmts = append(stmts, s)
+	}
+
 	return stmts
 }
 
@@ -133,22 +157,29 @@ func TestPostgres_UserRoundTrip(t *testing.T) {
 	runMigrations(t, ctx, pool, "../../internal/db/migrations")
 
 	queries := sqlcdn.New(pool)
-	id := uuid.New()
 	phone := "0912345678"
+	userName := "ITest"
 	now := time.Now()
 
 	created, err := queries.CreateUser(ctx, sqlcdn.CreateUserParams{
-		ID:           id,
 		Email:        "itest@example.com",
 		PasswordHash: "$2a$10$hash",
-		UserName:     "ITest",
-		Phone:        &phone,
 	})
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	if created.ID != id {
-		t.Fatalf("expected id %v, got %v", id, created.ID)
+	
+	err = queries.CreateUserProfile(ctx, sqlcdn.CreateUserProfileParams{
+		UserID:   created.ID,
+		UserName: &userName,
+		Phone:    &phone,
+	})
+	if err != nil {
+		t.Fatalf("CreateUserProfile: %v", err)
+	}
+
+	if created.Uuid == uuid.Nil {
+		t.Fatalf("expected non-nil uuid, got %v", created.Uuid)
 	}
 	if created.CreatedAt.Before(now.Add(-time.Minute)) {
 		t.Fatalf("created_at should be recent, got %v", created.CreatedAt)
@@ -158,8 +189,8 @@ func TestPostgres_UserRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUserByEmail: %v", err)
 	}
-	if got.ID != id {
-		t.Fatalf("expected id %v, got %v", id, got.ID)
+	if got.Uuid != created.Uuid {
+		t.Fatalf("expected uuid %v, got %v", created.Uuid, got.Uuid)
 	}
 	if got.Role != "customer" {
 		t.Fatalf("default role should be customer, got %s", got.Role)
