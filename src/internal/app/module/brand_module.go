@@ -8,6 +8,7 @@ import (
 	route "emc_lb/src/internal/routes"
 	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/cache"
+	"emc_lb/src/pkg/config"
 
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -22,7 +23,7 @@ func NewBrandModule(database *mongo.Database, redisClient *redis.Client) (*Brand
 	if err := brandRepository.EnsureIndexes(context.Background()); err != nil {
 		return nil, err
 	}
-	brandCacheStore := cache.NewRedisBrandCacheStore(redisClient)
+	brandCacheStore := cache.NewRedisBrandCacheStore(redisClient, config.Get().Cache.BrandTTL)
 	brandService := service.NewBrandService(brandRepository, brandCacheStore)
 	brandHandler := handler.NewBrandHandler(brandService)
 	brandRoute := route.NewBrandRoute(brandHandler)

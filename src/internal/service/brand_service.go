@@ -119,12 +119,6 @@ func (s *brandService) GetByID(ctx context.Context, id string) (entities.BrandRe
 		return entities.BrandResponse{}, newBrandError("Brand id is invalid", erres.BrandValidationFailed, http.StatusBadRequest)
 	}
 
-	if s.cacheStore != nil {
-		if cached, err := s.cacheStore.GetByID(ctx, id); err == nil {
-			return cached, nil
-		}
-	}
-
 	brand, err := s.brandRepository.GetByID(ctx, id)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -134,10 +128,6 @@ func (s *brandService) GetByID(ctx context.Context, id string) (entities.BrandRe
 	}
 
 	response := mapping.ToBrandResponse(brand)
-
-	if s.cacheStore != nil {
-		_ = s.cacheStore.SetByID(ctx, id, response)
-	}
 
 	return response, nil
 }
@@ -252,7 +242,6 @@ func (s *brandService) Update(ctx context.Context, id string, req entities.Updat
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.Invalidate(ctx, id)
 		_ = s.cacheStore.InvalidateAll(ctx)
 	}
 
@@ -278,7 +267,6 @@ func (s *brandService) Delete(ctx context.Context, id string) error {
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.Invalidate(ctx, id)
 		_ = s.cacheStore.InvalidateAll(ctx)
 	}
 

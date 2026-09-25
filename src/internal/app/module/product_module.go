@@ -6,6 +6,7 @@ import (
 	route "emc_lb/src/internal/routes"
 	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/cache"
+	"emc_lb/src/pkg/config"
 
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -22,7 +23,7 @@ func NewProductModule(database *mongo.Database, redisClient *redis.Client, searc
 	productRepository := repository.NewProductRepository(database.Collection("products"))
 	categoryRepository := repository.NewCategoryRepository(database.Collection("categories"))
 	brandRepository := repository.NewBrandRepository(database.Collection("brands"))
-	productCacheStore := cache.NewRedisProductCacheStore(redisClient)
+	productCacheStore := cache.NewRedisProductCacheStore(redisClient, config.Get().Cache.ProductDetailTTL)
 	productSearchRepository := repository.NewProductSearchRepository(searchClient)
 	productService := service.NewProductService(productRepository, categoryRepository, brandRepository, productCacheStore, productSearchRepository)
 	productHandler := handler.NewProductHandler(productService)

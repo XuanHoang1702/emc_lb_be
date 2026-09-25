@@ -262,9 +262,11 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 
 	// Invalidate product cache since stock has changed
 	if s.productCache != nil {
-		if cacheErr := s.productCache.InvalidateList(ctx); cacheErr != nil {
-			logs.WithContext(ctx).Warn("product cache invalidation failed after order creation",
-				"error", cacheErr)
+		for _, item := range req.Items {
+			if cacheErr := s.productCache.Invalidate(ctx, item.ProductID); cacheErr != nil {
+				logs.WithContext(ctx).Warn("product cache invalidation failed after order creation",
+					"product_id", item.ProductID, "error", cacheErr)
+			}
 		}
 	}
 
@@ -474,8 +476,10 @@ func (s *orderService) cancelOrderAtomic(ctx context.Context, order entities.Ord
 	}
 
 	if s.productCache != nil {
-		if cacheErr := s.productCache.InvalidateList(ctx); cacheErr != nil {
-			logs.WithContext(ctx).Warn("product cache invalidation failed after cancellation", "order_id", order.ID, "error", cacheErr)
+		for _, item := range order.Items {
+			if cacheErr := s.productCache.Invalidate(ctx, item.ProductID); cacheErr != nil {
+				logs.WithContext(ctx).Warn("product cache invalidation failed after cancellation", "order_id", order.ID, "product_id", item.ProductID, "error", cacheErr)
+			}
 		}
 	}
 	return nil
@@ -724,9 +728,11 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 	// Post-commit tasks
 	// 1. Invalidate product cache since stock has changed
 	if s.productCache != nil {
-		if cacheErr := s.productCache.InvalidateList(ctx); cacheErr != nil {
-			logs.WithContext(ctx).Warn("product cache invalidation failed after order creation",
-				"error", cacheErr)
+		for _, item := range req.Items {
+			if cacheErr := s.productCache.Invalidate(ctx, item.ProductID); cacheErr != nil {
+				logs.WithContext(ctx).Warn("product cache invalidation failed after order creation",
+					"product_id", item.ProductID, "error", cacheErr)
+			}
 		}
 	}
 

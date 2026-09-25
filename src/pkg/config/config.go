@@ -28,6 +28,7 @@ type AppConfig struct {
 	Mail     MailSettings
 	Payment  PaymentSettings
 	Search   SearchSettings
+	Cache    CacheSettings
 }
 
 type AppSettings struct {
@@ -72,6 +73,12 @@ type JWTSettings struct {
 	RefreshSecret string
 	AccessTTL     time.Duration
 	RefreshTTL    time.Duration
+}
+
+type CacheSettings struct {
+	CategoryTTL      time.Duration
+	BrandTTL         time.Duration
+	ProductDetailTTL time.Duration
 }
 
 type AWSSettings struct {
@@ -199,6 +206,11 @@ func load() (*AppConfig, error) {
 			SepaySuccessURL: getEnv("SEPAY_SUCCESS_URL", ""),
 			SepayErrorURL:   getEnv("SEPAY_ERROR_URL", ""),
 			SepayCancelURL:  getEnv("SEPAY_CANCEL_URL", ""),
+		},
+		Cache: CacheSettings{
+			CategoryTTL:      getEnvDuration("CACHE_CATEGORY_TTL", 24*time.Hour),
+			BrandTTL:         getEnvDuration("CACHE_BRAND_TTL", 24*time.Hour),
+			ProductDetailTTL: getEnvDuration("CACHE_PRODUCT_DETAIL_TTL", 15*time.Minute),
 		},
 	}
 

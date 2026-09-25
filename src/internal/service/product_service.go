@@ -122,9 +122,7 @@ func (s *productService) Create(ctx context.Context, req entities.CreateProductR
 		return entities.ProductResponse{}, res.WrapError(err, "Can not create product now", erres.CommonInternal)
 	}
 
-	if s.cacheStore != nil {
-		_ = s.cacheStore.InvalidateList(ctx)
-	}
+
 
 	if s.searchRepository != nil {
 		// Asynchronously index product to search engine
@@ -139,12 +137,6 @@ func (s *productService) Create(ctx context.Context, req entities.CreateProductR
 func (s *productService) List(ctx context.Context) ([]entities.ProductResponse, error) {
 	queryHash := "default" // In the future, this would be a hash of pagination/filter params
 
-	if s.cacheStore != nil {
-		if cached, err := s.cacheStore.GetList(ctx, queryHash); err == nil {
-			return cached, nil
-		}
-	}
-
 	// Singleflight for list
 	sgKey := "list:" + queryHash
 	result, err, _ := s.sg.Do(sgKey, func() (interface{}, error) {
@@ -156,10 +148,6 @@ func (s *productService) List(ctx context.Context) ([]entities.ProductResponse, 
 		responses := make([]entities.ProductResponse, 0, len(products))
 		for _, product := range products {
 			responses = append(responses, mapping.ToProductResponse(product))
-		}
-
-		if s.cacheStore != nil {
-			_ = s.cacheStore.SetList(ctx, queryHash, responses)
 		}
 
 		return responses, nil

@@ -100,15 +100,13 @@ func (s *categoryService) Create(ctx context.Context, req entities.CreateCategor
 }
 
 func (s *categoryService) List(ctx context.Context) ([]entities.CategoryResponse, error) {
-	queryHash := "default"
-
 	if s.cacheStore != nil {
-		if cached, err := s.cacheStore.GetList(ctx, queryHash); err == nil {
+		if cached, err := s.cacheStore.GetList(ctx); err == nil {
 			return cached, nil
 		}
 	}
 
-	sgKey := "list:" + queryHash
+	sgKey := "list:category"
 	result, err, _ := s.sg.Do(sgKey, func() (interface{}, error) {
 		categories, err := s.categoryRepository.List(ctx)
 		if err != nil {
@@ -121,7 +119,7 @@ func (s *categoryService) List(ctx context.Context) ([]entities.CategoryResponse
 		}
 
 		if s.cacheStore != nil {
-			_ = s.cacheStore.SetList(ctx, queryHash, responses)
+			_ = s.cacheStore.SetList(ctx, responses)
 		}
 
 		return responses, nil
@@ -139,12 +137,6 @@ func (s *categoryService) GetByID(ctx context.Context, id string) (entities.Cate
 		return entities.CategoryResponse{}, newBadRequestError("Category id is invalid")
 	}
 
-	if s.cacheStore != nil {
-		if cached, err := s.cacheStore.GetByID(ctx, id); err == nil {
-			return cached, nil
-		}
-	}
-
 	sgKey := "detail:" + id
 	result, err, _ := s.sg.Do(sgKey, func() (interface{}, error) {
 		category, err := s.categoryRepository.GetByID(ctx, id)
@@ -156,10 +148,6 @@ func (s *categoryService) GetByID(ctx context.Context, id string) (entities.Cate
 		}
 
 		response := mapping.ToCategoryResponse(category)
-		if s.cacheStore != nil {
-			_ = s.cacheStore.SetByID(ctx, id, response)
-		}
-
 		return response, nil
 	})
 
@@ -257,7 +245,7 @@ func (s *categoryService) Update(ctx context.Context, id string, req entities.Up
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.Invalidate(ctx, id)
+		_ = s.cacheStore.InvalidateList(ctx)
 	}
 
 	return mapping.ToCategoryResponse(category), nil
@@ -282,7 +270,7 @@ func (s *categoryService) Delete(ctx context.Context, id string) error {
 	}
 
 	if s.cacheStore != nil {
-		_ = s.cacheStore.Invalidate(ctx, id)
+		_ = s.cacheStore.InvalidateList(ctx)
 	}
 
 	return nil
