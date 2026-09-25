@@ -21,6 +21,7 @@ type TaskProcessor interface {
 
 type OrderManager interface {
 	UpdateOrderStatus(ctx context.Context, id string, status string) error
+	ExpireOrder(ctx context.Context, id string) error
 }
 
 type RedisTaskProcessor struct {

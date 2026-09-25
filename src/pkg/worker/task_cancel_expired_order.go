@@ -17,14 +17,10 @@ func (processor *RedisTaskProcessor) ProcessTaskCancelExpiredOrder(ctx context.C
 
 	logs.WithContext(ctx).Info("Processing expired order cancellation task", "order_id", payload.OrderID)
 
-	// Update order status to "cancelled".
-	// The OrderService (via OrderManager interface) will handle stock restoration.
-	err := processor.orderManager.UpdateOrderStatus(ctx, payload.OrderID, "cancelled")
+	err := processor.orderManager.ExpireOrder(ctx, payload.OrderID)
 	if err != nil {
-		// Log the error. If the order was already paid or cancelled, the service will return an error.
-		// We might not want to retry if the state transition is invalid.
-		logs.WithContext(ctx).Warn("Failed to cancel expired order", "order_id", payload.OrderID, "error", err)
-		return nil // Don't retry if it fails due to state rules
+		logs.WithContext(ctx).Warn("Failed to expire order", "order_id", payload.OrderID, "error", err)
+		return err // Retry if it fails due to DB issue, state rules are handled inside
 	}
 
 	logs.WithContext(ctx).Info("Successfully cancelled expired order", "order_id", payload.OrderID)

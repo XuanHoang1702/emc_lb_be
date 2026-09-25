@@ -66,6 +66,9 @@ func (s *stubPaymentOrderSvc) CreateOrderFromCheckout(ctx context.Context, userI
 func (s *stubPaymentOrderSvc) CancelOrder(ctx context.Context, userID string, orderID string) error {
 	return nil
 }
+func (s *stubPaymentOrderSvc) ExpireOrder(ctx context.Context, orderID string) error {
+	return nil
+}
 
 func TestProcessIPN_OrderPaid(t *testing.T) {
 	var markedInvoice string

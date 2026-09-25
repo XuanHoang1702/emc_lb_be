@@ -33,6 +33,7 @@ type OrderService interface {
 	ConfirmPayment(ctx context.Context, invoiceNumber string, paidAmount float64, transactionID string) error
 	UpdateOrderStatus(ctx context.Context, id string, status string) error
 	CancelOrder(ctx context.Context, userID string, orderID string) error
+	ExpireOrder(ctx context.Context, id string) error
 }
 
 type orderService struct {
@@ -406,6 +407,22 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, id string, status 
 	}
 
 	return nil
+}
+
+func (s *orderService) ExpireOrder(ctx context.Context, id string) error {
+	order, err := s.orderRepository.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Only expire if the order is still pending and unpaid.
+	// If it was already paid, cancelled, or transitioned to processing, we do nothing and return success.
+	if order.Status != entities.OrderStatusPending || order.PaymentStatus != entities.PaymentStatusUnpaid {
+		logs.WithContext(ctx).Info("order is no longer pending/unpaid, skipping expiration", "order_id", id, "status", order.Status, "payment_status", order.PaymentStatus)
+		return nil
+	}
+
+	return s.cancelOrderAtomic(ctx, order)
 }
 
 func (s *orderService) cancelOrderAtomic(ctx context.Context, order entities.Order) error {
