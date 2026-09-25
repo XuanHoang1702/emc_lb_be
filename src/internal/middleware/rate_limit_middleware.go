@@ -7,9 +7,28 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis_rate/v10"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/redis/go-redis/v9"
 
 	"emc_lb/src/pkg/res"
+)
+
+type RateLimitPolicy string
+
+const (
+	PolicyFailOpen   RateLimitPolicy = "fail_open"
+	PolicyFailClosed RateLimitPolicy = "fail_closed"
+)
+
+var (
+	rateLimitChecksTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rate_limit_checks_total",
+			Help: "Total number of rate limit checks, categorized by limiter type and result.",
+		},
+		[]string{"limiter", "result"}, // result: allowed, rejected, error_fail_open, error_fail_closed
+	)
 )
 
 // RateLimitMiddleware uses Redis to limit requests per IP address.
@@ -31,17 +50,20 @@ func RateLimitMiddleware(redisClient *redis.Client, rate int, per time.Duration)
 		if err != nil {
 			// If Redis is down, we might want to either block or allow.
 			// Allowing fallback is safer for availability, but we log the error.
+			rateLimitChecksTotal.WithLabelValues("public_ip", "error_fail_open").Inc()
 			ctx.Next()
 			return
 		}
 
-		setRateLimitHeaders(ctx, limit.Rate, resResult)
-
 		if resResult.Allowed == 0 {
+			rateLimitChecksTotal.WithLabelValues("public_ip", "rejected").Inc()
+			setRateLimitHeaders(ctx, limit.Rate, resResult)
 			abortWithTooManyRequests(ctx)
 			return
 		}
 
+		rateLimitChecksTotal.WithLabelValues("public_ip", "allowed").Inc()
+		setRateLimitHeaders(ctx, limit.Rate, resResult)
 		ctx.Next()
 	}
 }
@@ -69,17 +91,20 @@ func RateLimitByUserMiddleware(redisClient *redis.Client, rate int, per time.Dur
 
 		resResult, err := limiter.Allow(context.Background(), key, limit)
 		if err != nil {
+			rateLimitChecksTotal.WithLabelValues("user", "error_fail_open").Inc()
 			ctx.Next()
 			return
 		}
 
-		setRateLimitHeaders(ctx, limit.Rate, resResult)
-
 		if resResult.Allowed == 0 {
+			rateLimitChecksTotal.WithLabelValues("user", "rejected").Inc()
+			setRateLimitHeaders(ctx, limit.Rate, resResult)
 			abortWithTooManyRequests(ctx)
 			return
 		}
 
+		rateLimitChecksTotal.WithLabelValues("user", "allowed").Inc()
+		setRateLimitHeaders(ctx, limit.Rate, resResult)
 		ctx.Next()
 	}
 }
@@ -87,12 +112,15 @@ func RateLimitByUserMiddleware(redisClient *redis.Client, rate int, per time.Dur
 // AuthRateLimitMiddleware applies strict rate limiting for sensitive auth endpoints
 // (login, register, OTP verification, etc.) using IP + endpoint path as key.
 // Much lower limits to prevent brute-force and credential stuffing attacks.
-func AuthRateLimitMiddleware(redisClient *redis.Client, rate int, per time.Duration) gin.HandlerFunc {
+func AuthRateLimitMiddleware(redisClient *redis.Client, rate int, per time.Duration, policy RateLimitPolicy) gin.HandlerFunc {
 	limiter := redis_rate.NewLimiter(redisClient)
 
 	return func(ctx *gin.Context) {
 		ip := ctx.ClientIP()
 		path := ctx.FullPath()
+		if path == "" {
+			path = "unknown"
+		}
 		key := "rate_limit:auth:" + ip + ":" + path
 
 		limit := redis_rate.Limit{
@@ -103,17 +131,25 @@ func AuthRateLimitMiddleware(redisClient *redis.Client, rate int, per time.Durat
 
 		resResult, err := limiter.Allow(context.Background(), key, limit)
 		if err != nil {
+			if policy == PolicyFailClosed {
+				rateLimitChecksTotal.WithLabelValues("auth", "error_fail_closed").Inc()
+				abortWithServiceUnavailable(ctx)
+				return
+			}
+			rateLimitChecksTotal.WithLabelValues("auth", "error_fail_open").Inc()
 			ctx.Next()
 			return
 		}
 
-		setRateLimitHeaders(ctx, limit.Rate, resResult)
-
 		if resResult.Allowed == 0 {
+			rateLimitChecksTotal.WithLabelValues("auth", "rejected").Inc()
+			setRateLimitHeaders(ctx, limit.Rate, resResult)
 			abortWithTooManyRequests(ctx)
 			return
 		}
 
+		rateLimitChecksTotal.WithLabelValues("auth", "allowed").Inc()
+		setRateLimitHeaders(ctx, limit.Rate, resResult)
 		ctx.Next()
 	}
 }
@@ -128,6 +164,13 @@ func setRateLimitHeaders(ctx *gin.Context, rate int, result *redis_rate.Result) 
 // abortWithTooManyRequests aborts the request with a 429 Too Many Requests response.
 func abortWithTooManyRequests(ctx *gin.Context) {
 	errRes := res.NewError("err_too_many_requests", res.ErrCodeTooManyRequests)
+	ctx.Abort()
+	res.Error(ctx, errRes)
+}
+
+// abortWithServiceUnavailable aborts the request with a 503 Service Unavailable response.
+func abortWithServiceUnavailable(ctx *gin.Context) {
+	errRes := res.NewError("err_service_unavailable", res.ErrCodeServiceUnavailable)
 	ctx.Abort()
 	res.Error(ctx, errRes)
 }

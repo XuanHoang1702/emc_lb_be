@@ -30,7 +30,7 @@ func (r *PaymentRoute) RegisterPublic(router gin.IRouter) {
 		// IPN endpoint: strict rate limit (30 requests per minute per IP)
 		// SePay should not send more than this under normal conditions.
 		ipnGroup := paymentGroup.Group("")
-		ipnGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 30, time.Minute))
+		ipnGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 30, time.Minute, middleware.PolicyFailOpen))
 		{
 			ipnGroup.POST("/ipn", r.paymentHandler.HandleSepayIPN)
 		}

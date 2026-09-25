@@ -60,6 +60,7 @@ func TestHttpStatusFromCode(t *testing.T) {
 		{ErrCodeUnauthorized, http.StatusUnauthorized},
 		{ErrCodeForbidden, http.StatusForbidden},
 		{ErrCodeTooManyRequests, http.StatusTooManyRequests},
+		{ErrCodeServiceUnavailable, http.StatusServiceUnavailable},
 		{"UNKNOWN", http.StatusInternalServerError},
 	}
 	for _, tt := range tests {

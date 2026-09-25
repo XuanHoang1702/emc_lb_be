@@ -32,14 +32,14 @@ func (r *UserRoute) RegisterPublic(router gin.IRouter) {
 	// - Refresh token: 20 requests per minute per IP
 	if r.redisClient != nil {
 		loginGroup := userRoute.Group("")
-		loginGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 10, time.Minute))
+		loginGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 10, time.Minute, middleware.PolicyFailClosed))
 		{
 			loginGroup.POST("/register", r.userHandler.HandleRegister)
 			loginGroup.POST("/login", r.userHandler.HandleLogin)
 		}
 
 		otpGroup := userRoute.Group("")
-		otpGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 5, time.Minute))
+		otpGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 5, time.Minute, middleware.PolicyFailClosed))
 		{
 			otpGroup.POST("/verify-email-otp", r.userHandler.HandleVerifyEmailOTP)
 			otpGroup.POST("/forgot-password", r.userHandler.HandleForgotPassword)
@@ -47,7 +47,7 @@ func (r *UserRoute) RegisterPublic(router gin.IRouter) {
 		}
 
 		refreshGroup := userRoute.Group("")
-		refreshGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 20, time.Minute))
+		refreshGroup.Use(middleware.AuthRateLimitMiddleware(r.redisClient, 20, time.Minute, middleware.PolicyFailClosed))
 		{
 			refreshGroup.POST("/refresh-token", r.userHandler.HandleRefreshToken)
 		}
