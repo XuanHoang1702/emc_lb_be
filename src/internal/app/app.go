@@ -26,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"github.com/meilisearch/meilisearch-go"
 )
 
 // App holds all long-lived server resources and exposes Run / Close.
@@ -34,6 +35,7 @@ type App struct {
 	pgPool            *pgxpool.Pool
 	mongoClient       *mongo.Client
 	redisClient       *redis.Client
+	meilisearchClient meilisearch.ServiceManager
 	queries           *sqlc.Queries
 	refreshTokenStore cache.RefreshTokenStore
 	avatarStorage     storage.AvatarStorage
@@ -94,6 +96,12 @@ func New() (*App, error) {
 	}
 	closers = append(closers, func() { _ = redisClient.Close() })
 
+	meilisearchClient, err := utils.NewMeilisearchClientFromConfig(&cfg.Search)
+	if err != nil {
+		return nil, fmt.Errorf("create meilisearch client: %w", err)
+	}
+	// meilisearch client doesn't need explicit close
+
 	avatarStorage, err := storage.NewLocalStackS3Storage(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("create avatar storage: %w", err)
@@ -125,6 +133,7 @@ func New() (*App, error) {
 		MongoClient:       mongoClient,
 		MongoDB:           mongoDB,
 		RedisClient:       redisClient,
+		SearchClient:      meilisearchClient,
 		RefreshTokenStore: refreshTokenStore,
 		EmailOTPStore:     emailOTPStore,
 		AvatarStorage:     avatarStorage,
@@ -142,7 +151,7 @@ func New() (*App, error) {
 	)
 
 	couponMod = module.NewCouponModule(mongoDB, redisClient)
-	productMod = module.NewProductModule(mongoDB, redisClient)
+	productMod = module.NewProductModule(mongoDB, redisClient, meilisearchClient)
 
 	categoryMod, err := module.NewCategoryModule(mongoDB, redisClient)
 	if err != nil {
@@ -201,6 +210,7 @@ func New() (*App, error) {
 		pgPool:            pgPool,
 		mongoClient:       mongoClient,
 		redisClient:       redisClient,
+		meilisearchClient: meilisearchClient,
 		queries:           queries,
 		refreshTokenStore: refreshTokenStore,
 		avatarStorage:     avatarStorage,

@@ -125,6 +125,32 @@ services:
           cpus: '1.0'
           memory: 512M
 
+  meilisearch:
+    container_name: emc_lb_meilisearch
+    image: getmeili/meilisearch:v1.10
+    env_file: ${ECC_ENV_FILE:-../.env.development}
+    ports:
+      - "7700:7700"
+    environment:
+      - MEILI_MASTER_KEY=$${MEILISEARCH_MASTER_KEY:-masterKey}
+      - MEILI_ENV=development
+    volumes:
+      - meilisearchdata:/meili_data
+    networks:
+      - internal-net
+    logging: *default-logging
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:7700/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
   emc_api_node_1:
     container_name: emc_lb_api_node_1
     image: ${ECC_API_IMAGE:-emc_lb_api}:${ECC_IMAGE_TAG:-latest}
@@ -140,12 +166,15 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOCALSTACK_ENDPOINT: http://localstack:4566
+      MEILISEARCH_HOST: http://meilisearch:7700
     depends_on:
       postgres:
         condition: service_healthy
       mongo:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      meilisearch:
         condition: service_healthy
     networks:
       - public-net
@@ -173,12 +202,15 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOCALSTACK_ENDPOINT: http://localstack:4566
+      MEILISEARCH_HOST: http://meilisearch:7700
     depends_on:
       postgres:
         condition: service_healthy
       mongo:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      meilisearch:
         condition: service_healthy
     networks:
       - public-net
@@ -206,12 +238,15 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOCALSTACK_ENDPOINT: http://localstack:4566
+      MEILISEARCH_HOST: http://meilisearch:7700
     depends_on:
       postgres:
         condition: service_healthy
       mongo:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      meilisearch:
         condition: service_healthy
     networks:
       - public-net
@@ -237,12 +272,15 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOCALSTACK_ENDPOINT: http://localstack:4566
+      MEILISEARCH_HOST: http://meilisearch:7700
     depends_on:
       postgres:
         condition: service_healthy
       mongo:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      meilisearch:
         condition: service_healthy
     networks:
       - internal-net
@@ -389,6 +427,7 @@ volumes:
   mongodata:
   redisdata:
   localstackdata:
+  meilisearchdata:
   prometheus_data:
   grafana_data:
 

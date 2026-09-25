@@ -9,6 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"github.com/meilisearch/meilisearch-go"
 )
 
 type ProductModule struct {
@@ -17,12 +18,13 @@ type ProductModule struct {
 	cacheStore cache.ProductCacheStore
 }
 
-func NewProductModule(database *mongo.Database, redisClient *redis.Client) *ProductModule {
+func NewProductModule(database *mongo.Database, redisClient *redis.Client, searchClient meilisearch.ServiceManager) *ProductModule {
 	productRepository := repository.NewProductRepository(database.Collection("products"))
 	categoryRepository := repository.NewCategoryRepository(database.Collection("categories"))
 	brandRepository := repository.NewBrandRepository(database.Collection("brands"))
 	productCacheStore := cache.NewRedisProductCacheStore(redisClient)
-	productService := service.NewProductService(productRepository, categoryRepository, brandRepository, productCacheStore)
+	productSearchRepository := repository.NewProductSearchRepository(searchClient)
+	productService := service.NewProductService(productRepository, categoryRepository, brandRepository, productCacheStore, productSearchRepository)
 	productHandler := handler.NewProductHandler(productService)
 	productRoute := route.NewProductRoute(productHandler)
 

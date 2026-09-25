@@ -59,8 +59,14 @@ func main() {
 		Password: cfg.Redis.Password,
 	}
 
+	meilisearchClient, err := utils.NewMeilisearchClientFromConfig(&cfg.Search)
+	if err != nil {
+		logger.Error("failed to create meilisearch client", "error", err)
+		os.Exit(1)
+	}
+
 	couponMod := module.NewCouponModule(mongoDB, redisClient)
-	productMod := module.NewProductModule(mongoDB, redisClient)
+	productMod := module.NewProductModule(mongoDB, redisClient, meilisearchClient)
 	orderMod := module.NewOrderModule(mongoDB, pgPool, queries, couponMod.ServiceInstance(), redisClient, productMod.CacheStore(), nil)
 
 	processor := worker.NewRedisTaskProcessor(redisOpt, mailer, orderMod.Service())

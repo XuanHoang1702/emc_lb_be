@@ -24,6 +24,8 @@ type ProductService interface {
 	GetByID(context.Context, string) (entities.ProductResponse, error)
 	Update(context.Context, string, entities.UpdateProductRequest) (entities.ProductResponse, error)
 	Delete(context.Context, string) error
+	Search(ctx context.Context, query string, limit int64, offset int64) (interface{}, error)
+	SyncAll(ctx context.Context) error
 }
 
 type productService struct {
@@ -31,15 +33,17 @@ type productService struct {
 	categoryRepository repository.CategoryRepository
 	brandRepository    repository.BrandRepository
 	cacheStore         cache.ProductCacheStore
+	searchRepository   repository.ProductSearchRepository
 	sg                 singleflight.Group
 }
 
-func NewProductService(productRepository repository.ProductRepository, categoryRepository repository.CategoryRepository, brandRepository repository.BrandRepository, cacheStore cache.ProductCacheStore) ProductService {
+func NewProductService(productRepository repository.ProductRepository, categoryRepository repository.CategoryRepository, brandRepository repository.BrandRepository, cacheStore cache.ProductCacheStore, searchRepository repository.ProductSearchRepository) ProductService {
 	return &productService{
 		productRepository:  productRepository,
 		categoryRepository: categoryRepository,
 		brandRepository:    brandRepository,
 		cacheStore:         cacheStore,
+		searchRepository:   searchRepository,
 	}
 }
 
@@ -120,6 +124,13 @@ func (s *productService) Create(ctx context.Context, req entities.CreateProductR
 
 	if s.cacheStore != nil {
 		_ = s.cacheStore.InvalidateList(ctx)
+	}
+
+	if s.searchRepository != nil {
+		// Asynchronously index product to search engine
+		go func(p entities.Product) {
+			_ = s.searchRepository.IndexProduct(context.Background(), p)
+		}(product)
 	}
 
 	return mapping.ToProductResponse(product), nil
@@ -292,6 +303,13 @@ func (s *productService) Update(ctx context.Context, id string, req entities.Upd
 		_ = s.cacheStore.Invalidate(ctx, id)
 	}
 
+	if s.searchRepository != nil {
+		// Asynchronously index updated product to search engine
+		go func(p entities.Product) {
+			_ = s.searchRepository.IndexProduct(context.Background(), p)
+		}(product)
+	}
+
 	return mapping.ToProductResponse(product), nil
 }
 
@@ -307,6 +325,55 @@ func (s *productService) Delete(ctx context.Context, id string) error {
 
 	if s.cacheStore != nil {
 		_ = s.cacheStore.Invalidate(ctx, id)
+	}
+
+	if s.searchRepository != nil {
+		// Asynchronously remove product from search engine
+		go func(productID string) {
+			_ = s.searchRepository.RemoveProduct(context.Background(), productID)
+		}(id)
+	}
+
+	return nil
+}
+
+func (s *productService) Search(ctx context.Context, query string, limit int64, offset int64) (interface{}, error) {
+	if s.searchRepository == nil {
+		return nil, &res.AppError{
+			Message:    "Search engine is not configured",
+			Code:       erres.CommonInternal,
+			StatusCode: http.StatusInternalServerError,
+		}
+	}
+
+	result, err := s.searchRepository.Search(ctx, query, limit, offset)
+	if err != nil {
+		return nil, res.WrapError(err, "Search failed", erres.CommonInternal)
+	}
+
+	return result, nil
+}
+
+func (s *productService) SyncAll(ctx context.Context) error {
+	if s.searchRepository == nil {
+		return &res.AppError{
+			Message:    "Search engine is not configured",
+			Code:       erres.CommonInternal,
+			StatusCode: http.StatusInternalServerError,
+		}
+	}
+
+	if err := s.searchRepository.InitIndex(ctx); err != nil {
+		return err
+	}
+
+	products, err := s.productRepository.List(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, p := range products {
+		_ = s.searchRepository.IndexProduct(ctx, p)
 	}
 
 	return nil

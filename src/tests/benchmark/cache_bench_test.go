@@ -83,7 +83,7 @@ func (m *mockBrandRepo) ExistsByEmail(_ context.Context, _ string, _ *string) (b
 func (m *mockBrandRepo) EnsureIndexes(_ context.Context) error { return nil }
 
 func BenchmarkProductGetByID_ColdCache(b *testing.B) {
-	svc := service.NewProductService(&mockProductRepo{}, &mockCategoryRepo{}, &mockBrandRepo{}, nil) // No cache
+	svc := service.NewProductService(&mockProductRepo{}, &mockCategoryRepo{}, &mockBrandRepo{}, nil, nil) // No cache
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -96,7 +96,7 @@ func BenchmarkProductGetByID_WarmCache(b *testing.B) {
 		hit: true,
 		data: entities.ProductResponse{ID: "p1", Name: "Test Product"},
 	}
-	svc := service.NewProductService(&mockProductRepo{}, &mockCategoryRepo{}, &mockBrandRepo{}, cacheStore)
+	svc := service.NewProductService(&mockProductRepo{}, &mockCategoryRepo{}, &mockBrandRepo{}, cacheStore, nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

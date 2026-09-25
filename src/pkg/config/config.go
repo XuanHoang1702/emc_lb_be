@@ -27,6 +27,7 @@ type AppConfig struct {
 	AWS      AWSSettings
 	Mail     MailSettings
 	Payment  PaymentSettings
+	Search   SearchSettings
 }
 
 type AppSettings struct {
@@ -59,6 +60,11 @@ type RedisSettings struct {
 	Host     string
 	Port     string
 	Password string
+}
+
+type SearchSettings struct {
+	Host      string
+	MasterKey string
 }
 
 type JWTSettings struct {
@@ -156,6 +162,10 @@ func load() (*AppConfig, error) {
 			Host:     getEnv("REDIS_HOST", "localhost"),
 			Port:     getEnv("REDIS_PORT", "6379"),
 			Password: getEnv("REDIS_PASSWORD", ""),
+		},
+		Search: SearchSettings{
+			Host:      getEnv("MEILISEARCH_HOST", "http://localhost:7700"),
+			MasterKey: getEnv("MEILISEARCH_MASTER_KEY", ""),
 		},
 		JWT: JWTSettings{
 			AccessSecret:  getEnv("ACCESS_TOKEN_SECRET", ""),
