@@ -1,0 +1,17 @@
+{
+  "products": [
+    "64a7c1b52a5f5f4b52b89c3a",
+    "64a7c1b52a5f5f4b52b89c3b",
+    "64a7c1b52a5f5f4b52b89c3c"
+  ],
+  "users": [
+    {
+      "email": "test1@example.com",
+      "password": "Password123!"
+    },
+    {
+      "email": "test2@example.com",
+      "password": "Password123!"
+    }
+  ]
+}
