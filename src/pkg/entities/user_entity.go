@@ -16,6 +16,7 @@ type User struct {
 	Email               string
 	PasswordHash        string
 	PasswordChangedAt   time.Time
+	SessionVersion      int32
 	EmailVerified       bool
 	EmailVerifiedAt     time.Time
 	Status              string

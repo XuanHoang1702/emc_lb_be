@@ -33,6 +33,7 @@ SELECT
     uuid,
     email,
     password_hash,
+    session_version,
     email_verified,
     role,
     status,
@@ -55,6 +56,7 @@ SELECT
     uuid,
     email,
     password_hash,
+    session_version,
     email_verified,
     role
 FROM users
@@ -129,5 +131,6 @@ UPDATE users
 SET
     password_hash = $2,
     password_changed_at = NOW(),
+    session_version = session_version + 1,
     updated_at = NOW()
 WHERE id = $1 AND is_deleted = false;

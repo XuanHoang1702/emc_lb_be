@@ -223,7 +223,10 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 
 	if err := s.refreshTokenStore.Save(
 		ctx,
-		user.UUID.String(),
+		cache.SessionData{
+			UserID:         user.UUID.String(),
+			SessionVersion: user.SessionVersion,
+		},
 		tokenPair.RefreshToken,
 		time.Until(tokenPair.RefreshTokenExpiresAt),
 	); err != nil {
@@ -242,7 +245,7 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 	normalizedRequest := req
 	utils.NormalizeStrings(&normalizedRequest.RefreshToken)
 
-	userID, err := s.refreshTokenStore.GetUserID(ctx, normalizedRequest.RefreshToken)
+	session, err := s.refreshTokenStore.GetSession(ctx, normalizedRequest.RefreshToken)
 	if err != nil {
 		return entities.LoginUserResponse{}, &res.AppError{
 			Message:    "Invalid refresh token",
@@ -251,7 +254,7 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 		}
 	}
 
-	uid, err := uuid.Parse(userID)
+	uid, err := uuid.Parse(session.UserID)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Invalid user ID in refresh token", erres.CommonInternal)
 	}
@@ -261,7 +264,17 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
 	}
 
-	tokenPair, err := utils.GenerateTokenPair(userID, user.Role, s.cfg.JWT)
+	if session.SessionVersion < user.SessionVersion {
+		// Session was invalidated (e.g. by password change)
+		_ = s.refreshTokenStore.Delete(ctx, normalizedRequest.RefreshToken)
+		return entities.LoginUserResponse{}, &res.AppError{
+			Message:    "Session expired, please login again",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		}
+	}
+
+	tokenPair, err := utils.GenerateTokenPair(session.UserID, user.Role, s.cfg.JWT)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
 	}
@@ -272,7 +285,10 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 
 	if err := s.refreshTokenStore.Save(
 		ctx,
-		userID,
+		cache.SessionData{
+			UserID:         session.UserID,
+			SessionVersion: user.SessionVersion,
+		},
 		tokenPair.RefreshToken,
 		time.Until(tokenPair.RefreshTokenExpiresAt),
 	); err != nil {
@@ -291,7 +307,7 @@ func (s *userService) Logout(ctx context.Context, callerUserID string, req entit
 	normalizedRequest := req
 	utils.NormalizeStrings(&normalizedRequest.RefreshToken)
 
-	tokenOwnerID, err := s.refreshTokenStore.GetUserID(ctx, normalizedRequest.RefreshToken)
+	session, err := s.refreshTokenStore.GetSession(ctx, normalizedRequest.RefreshToken)
 	if err != nil {
 		return &res.AppError{
 			Message:    "Invalid refresh token",
@@ -301,7 +317,7 @@ func (s *userService) Logout(ctx context.Context, callerUserID string, req entit
 	}
 
 	// Verify token ownership: only the token owner can invalidate their own token.
-	if tokenOwnerID != callerUserID {
+	if session.UserID != callerUserID {
 		return &res.AppError{
 			Message:    "Refresh token does not belong to the current user",
 			Code:       erres.CommonForbidden,
@@ -536,11 +552,7 @@ func (s *userService) ChangePassword(ctx context.Context, userID uuid.UUID, req 
 		return res.WrapError(err, "Can not change password now", erres.UserUpdateFailed)
 	}
 
-	// Invalidate all refresh tokens for this user to force re-login on all devices
-	if err := s.refreshTokenStore.DeleteAllForUser(ctx, userID.String()); err != nil {
-		logs.WithContext(ctx).Warn("Failed to delete user refresh tokens on password change", "error", err)
-	}
-
+	// Tokens are inherently invalidated via session_version DB increment, no need to aggressively delete from Redis.
 	return nil
 }
 
@@ -580,11 +592,7 @@ func (s *userService) AdminChangePassword(ctx context.Context, callerRole string
 		return res.WrapError(err, "Can not change password now", erres.UserUpdateFailed)
 	}
 
-	// Invalidate all refresh tokens for this user to force re-login on all devices
-	if err := s.refreshTokenStore.DeleteAllForUser(ctx, targetUserUUID.String()); err != nil {
-		logs.WithContext(ctx).Warn("Failed to delete target user refresh tokens on admin password change", "error", err)
-	}
-
+	// Tokens are inherently invalidated via session_version DB increment, no need to aggressively delete from Redis.
 	return nil
 }
 
@@ -680,10 +688,6 @@ func (s *userService) ResetPassword(ctx context.Context, req entities.ResetPassw
 
 	_ = s.emailOTPStore.Delete(ctx, resetKey)
 
-	// Invalidate all refresh tokens for this user to force re-login on all devices
-	if err := s.refreshTokenStore.DeleteAllForUser(ctx, user.UUID.String()); err != nil {
-		logs.WithContext(ctx).Warn("Failed to delete user refresh tokens on password reset", "error", err)
-	}
-
+	// Tokens are inherently invalidated via session_version DB increment, no need to aggressively delete from Redis.
 	return nil
 }

@@ -57,6 +57,7 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (entities
 		UUID:                row.Uuid,
 		Email:               row.Email,
 		PasswordHash:        row.PasswordHash,
+		SessionVersion:      row.SessionVersion,
 		EmailVerified:       row.EmailVerified,
 		Role:                row.Role,
 		Status:              row.Status,
@@ -76,6 +77,7 @@ func (r *userRepository) GetByUUID(ctx context.Context, id uuid.UUID) (entities.
 		UUID:          row.Uuid,
 		Email:         row.Email,
 		PasswordHash:  row.PasswordHash,
+		SessionVersion: row.SessionVersion,
 		EmailVerified: row.EmailVerified,
 		Role:          row.Role,
 	}, nil

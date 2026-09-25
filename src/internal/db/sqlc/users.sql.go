@@ -91,6 +91,7 @@ SELECT
     uuid,
     email,
     password_hash,
+    session_version,
     email_verified,
     role,
     status,
@@ -107,6 +108,7 @@ type GetUserByEmailRow struct {
 	Uuid                uuid.UUID `json:"uuid"`
 	Email               string    `json:"email"`
 	PasswordHash        string    `json:"password_hash"`
+	SessionVersion      int32     `json:"session_version"`
 	EmailVerified       bool      `json:"email_verified"`
 	Role                string    `json:"role"`
 	Status              string    `json:"status"`
@@ -123,6 +125,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.Uuid,
 		&i.Email,
 		&i.PasswordHash,
+		&i.SessionVersion,
 		&i.EmailVerified,
 		&i.Role,
 		&i.Status,
@@ -139,6 +142,7 @@ SELECT
     uuid,
     email,
     password_hash,
+    session_version,
     email_verified,
     role
 FROM users
@@ -147,12 +151,13 @@ LIMIT 1
 `
 
 type GetUserByUUIDRow struct {
-	ID            int64     `json:"id"`
-	Uuid          uuid.UUID `json:"uuid"`
-	Email         string    `json:"email"`
-	PasswordHash  string    `json:"password_hash"`
-	EmailVerified bool      `json:"email_verified"`
-	Role          string    `json:"role"`
+	ID             int64     `json:"id"`
+	Uuid           uuid.UUID `json:"uuid"`
+	Email          string    `json:"email"`
+	PasswordHash   string    `json:"password_hash"`
+	SessionVersion int32     `json:"session_version"`
+	EmailVerified  bool      `json:"email_verified"`
+	Role           string    `json:"role"`
 }
 
 func (q *Queries) GetUserByUUID(ctx context.Context, argUuid uuid.UUID) (GetUserByUUIDRow, error) {
@@ -163,6 +168,7 @@ func (q *Queries) GetUserByUUID(ctx context.Context, argUuid uuid.UUID) (GetUser
 		&i.Uuid,
 		&i.Email,
 		&i.PasswordHash,
+		&i.SessionVersion,
 		&i.EmailVerified,
 		&i.Role,
 	)
@@ -326,6 +332,7 @@ UPDATE users
 SET
     password_hash = $2,
     password_changed_at = NOW(),
+    session_version = session_version + 1,
     updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
 `

@@ -31,6 +31,42 @@ func (_m *Mailer) SendEmailVerificationOTP(_a0 context.Context, _a1 string, _a2 
 	return r0
 }
 
+// SendOrderPaymentSuccessEmail provides a mock function with given fields: ctx, recipientEmail, userName, invoiceNumber, amountPaid
+func (_m *Mailer) SendOrderPaymentSuccessEmail(ctx context.Context, recipientEmail string, userName string, invoiceNumber string, amountPaid float64) error {
+	ret := _m.Called(ctx, recipientEmail, userName, invoiceNumber, amountPaid)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SendOrderPaymentSuccessEmail")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, float64) error); ok {
+		r0 = rf(ctx, recipientEmail, userName, invoiceNumber, amountPaid)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// SendPasswordResetOTP provides a mock function with given fields: _a0, _a1, _a2, _a3, _a4
+func (_m *Mailer) SendPasswordResetOTP(_a0 context.Context, _a1 string, _a2 string, _a3 string, _a4 int) error {
+	ret := _m.Called(_a0, _a1, _a2, _a3, _a4)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SendPasswordResetOTP")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, int) error); ok {
+		r0 = rf(_a0, _a1, _a2, _a3, _a4)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // NewMailer creates a new instance of Mailer. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMailer(t interface {

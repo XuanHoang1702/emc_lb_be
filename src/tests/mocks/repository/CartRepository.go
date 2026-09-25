@@ -78,6 +78,24 @@ func (_m *CartRepository) GetByUserID(ctx context.Context, userID string) (entit
 	return r0, r1
 }
 
+// RemoveItems provides a mock function with given fields: ctx, userID, productIDs
+func (_m *CartRepository) RemoveItems(ctx context.Context, userID string, productIDs []string) error {
+	ret := _m.Called(ctx, userID, productIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveItems")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string) error); ok {
+		r0 = rf(ctx, userID, productIDs)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Save provides a mock function with given fields: ctx, cart
 func (_m *CartRepository) Save(ctx context.Context, cart entities.Cart) (entities.Cart, error) {
 	ret := _m.Called(ctx, cart)

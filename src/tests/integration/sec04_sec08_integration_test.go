@@ -100,15 +100,15 @@ func TestSecurity_SEC04_SEC08_Integration(t *testing.T) {
 	// Create some refresh tokens for the target user
 	token1 := "token1-abc"
 	token2 := "token2-xyz"
-	err = tokenStore.Save(ctx, dbUser.Uuid.String(), token1, time.Hour)
+	err = tokenStore.Save(ctx, cache.SessionData{UserID: dbUser.Uuid.String(), SessionVersion: dbUser.SessionVersion}, token1, time.Hour)
 	assert.NoError(t, err)
-	err = tokenStore.Save(ctx, dbUser.Uuid.String(), token2, time.Hour)
+	err = tokenStore.Save(ctx, cache.SessionData{UserID: dbUser.Uuid.String(), SessionVersion: dbUser.SessionVersion}, token2, time.Hour)
 	assert.NoError(t, err)
 
 	// Verify tokens are usable
-	userIDFromToken, err := tokenStore.GetUserID(ctx, token1)
+	session, err := tokenStore.GetSession(ctx, token1)
 	assert.NoError(t, err)
-	assert.Equal(t, dbUser.Uuid.String(), userIDFromToken)
+	assert.Equal(t, dbUser.Uuid.String(), session.UserID)
 
 	// 2. Test SEC-08: Target Role Enforcement
 	// Customer trying to change another customer's password -> should fail
@@ -126,11 +126,12 @@ func TestSecurity_SEC04_SEC08_Integration(t *testing.T) {
 
 	// 3. Test SEC-04: Session invalidation
 	// Admin change password above should have invalidated ALL target's sessions
-	_, err = tokenStore.GetUserID(ctx, token1)
-	assert.Error(t, err, "token1 should be deleted")
+	// In the new architecture, tokens remain in Redis but are rejected by RefreshToken
+	_, err = userService.RefreshToken(ctx, entities.RefreshTokenRequest{RefreshToken: token1})
+	assert.Error(t, err, "token1 should be invalid after password change")
 	
-	_, err = tokenStore.GetUserID(ctx, token2)
-	assert.Error(t, err, "token2 should be deleted")
+	_, err = userService.RefreshToken(ctx, entities.RefreshTokenRequest{RefreshToken: token2})
+	assert.Error(t, err, "token2 should be invalid after password change")
 
 	// Create another user to verify isolation
 	otherUserUUID := uuid.New()
@@ -140,7 +141,7 @@ func TestSecurity_SEC04_SEC08_Integration(t *testing.T) {
 	
 	otherUser, _ := queries.GetUserByEmail(ctx, "other@example.com")
 	otherToken := "other-token-123"
-	_ = tokenStore.Save(ctx, otherUser.Uuid.String(), otherToken, time.Hour)
+	_ = tokenStore.Save(ctx, cache.SessionData{UserID: otherUser.Uuid.String(), SessionVersion: otherUser.SessionVersion}, otherToken, time.Hour)
 
 	// 4. Test SEC-08: Admin cannot change Superadmin password
 	superUserUUID := uuid.New()
@@ -165,6 +166,6 @@ func TestSecurity_SEC04_SEC08_Integration(t *testing.T) {
 	// We can skip self-change here or mock CheckPassword, but it relies on bcrypt. 
 	
 	// Let's at least verify that the previous AdminChangePassword did NOT delete otherUser's token
-	_, err = tokenStore.GetUserID(ctx, otherToken)
-	assert.NoError(t, err, "other user's token should NOT be deleted by target user's password change")
+	_, err = userService.RefreshToken(ctx, entities.RefreshTokenRequest{RefreshToken: otherToken})
+	assert.NoError(t, err, "other user's token should NOT be invalidated by target user's password change")
 }

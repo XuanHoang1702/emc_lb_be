@@ -136,6 +136,24 @@ func (_m *ProductRepository) List(_a0 context.Context) ([]entities.Product, erro
 	return r0, r1
 }
 
+// RestoreStockIdempotent provides a mock function with given fields: ctx, id, quantity, orderID
+func (_m *ProductRepository) RestoreStockIdempotent(ctx context.Context, id string, quantity int64, orderID string) error {
+	ret := _m.Called(ctx, id, quantity, orderID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RestoreStockIdempotent")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64, string) error); ok {
+		r0 = rf(ctx, id, quantity, orderID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Update provides a mock function with given fields: _a0, _a1, _a2
 func (_m *ProductRepository) Update(_a0 context.Context, _a1 string, _a2 map[string]interface{}) (entities.Product, error) {
 	ret := _m.Called(_a0, _a1, _a2)
