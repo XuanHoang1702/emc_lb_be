@@ -175,6 +175,7 @@ func New() (*App, error) {
 	router := gin.New()
 	router.Use(
 		middleware.RequestIDMiddleware(),
+		middleware.SecurityHeadersMiddleware(),
 		middleware.CORSMiddleware(),
 		middleware.RequestLogMiddleware(),
 		middleware.AcceptLanguageMiddleware(),

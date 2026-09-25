@@ -122,6 +122,16 @@ func (h *UserHandler) HandleRefreshToken(ctx *gin.Context) {
 // @Security     BearerAuth
 // @Router       /api/v1/user/logout [post]
 func (h *UserHandler) HandleLogout(ctx *gin.Context) {
+	userID := ctx.GetString(middleware.ContextUserIDKey)
+	if userID == "" {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid access token",
+			Code:       errors.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
 	var logoutRequest entities.LogoutUserRequest
 	err := validation.BindJSON(ctx, &logoutRequest, errors.UserInvalidFormat)
 	if err != nil {
@@ -129,7 +139,7 @@ func (h *UserHandler) HandleLogout(ctx *gin.Context) {
 		return
 	}
 
-	if err := h.userService.Logout(ctx.Request.Context(), logoutRequest); err != nil {
+	if err := h.userService.Logout(ctx.Request.Context(), userID, logoutRequest); err != nil {
 		res.Error(ctx, err)
 		return
 	}
@@ -377,7 +387,8 @@ func (h *UserHandler) HandleAdminChangePassword(ctx *gin.Context) {
 		return
 	}
 
-	if err := h.userService.AdminChangePassword(ctx.Request.Context(), targetUUID, req); err != nil {
+	callerRole := ctx.GetString(middleware.ContextRoleKey)
+	if err := h.userService.AdminChangePassword(ctx.Request.Context(), callerRole, targetUUID, req); err != nil {
 		res.Error(ctx, err)
 		return
 	}

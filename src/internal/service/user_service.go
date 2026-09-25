@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"net/netip"
@@ -10,6 +11,7 @@ import (
 	"emc_lb/src/internal/db/sqlc"
 
 	"emc_lb/src/internal/repository"
+	"emc_lb/src/pkg/auth"
 	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/entities"
@@ -31,13 +33,13 @@ type UserService interface {
 	Register(context.Context, entities.RegisterUserRequest) (entities.RegisterUserResponse, error)
 	Login(context.Context, entities.LoginUserRequest) (entities.LoginUserResponse, error)
 	RefreshToken(context.Context, entities.RefreshTokenRequest) (entities.LoginUserResponse, error)
-	Logout(context.Context, entities.LogoutUserRequest) error
+	Logout(context.Context, string, entities.LogoutUserRequest) error
 	VerifyEmailOTP(context.Context, entities.VerifyEmailOTPRequest) error
 	Delete(context.Context, uuid.UUID) error
 	UpsertAvatar(context.Context, entities.UpsertAvatarRequest) (entities.UpsertAvatarResponse, error)
 	GetProfile(context.Context, uuid.UUID) (entities.UserProfileResponse, error)
 	ChangePassword(context.Context, uuid.UUID, entities.ChangePasswordRequest) error
-	AdminChangePassword(context.Context, uuid.UUID, entities.AdminChangePasswordRequest) error
+	AdminChangePassword(context.Context, string, uuid.UUID, entities.AdminChangePasswordRequest) error
 	ForgotPassword(context.Context, entities.ForgotPasswordRequest) error
 	ResetPassword(context.Context, entities.ResetPasswordRequest) error
 }
@@ -285,15 +287,25 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 	}, nil
 }
 
-func (s *userService) Logout(ctx context.Context, req entities.LogoutUserRequest) error {
+func (s *userService) Logout(ctx context.Context, callerUserID string, req entities.LogoutUserRequest) error {
 	normalizedRequest := req
 	utils.NormalizeStrings(&normalizedRequest.RefreshToken)
 
-	if _, err := s.refreshTokenStore.GetUserID(ctx, normalizedRequest.RefreshToken); err != nil {
+	tokenOwnerID, err := s.refreshTokenStore.GetUserID(ctx, normalizedRequest.RefreshToken)
+	if err != nil {
 		return &res.AppError{
 			Message:    "Invalid refresh token",
 			Code:       erres.UserUnauthorized,
 			StatusCode: http.StatusUnauthorized,
+		}
+	}
+
+	// Verify token ownership: only the token owner can invalidate their own token.
+	if tokenOwnerID != callerUserID {
+		return &res.AppError{
+			Message:    "Refresh token does not belong to the current user",
+			Code:       erres.CommonForbidden,
+			StatusCode: http.StatusForbidden,
 		}
 	}
 
@@ -322,7 +334,7 @@ func (s *userService) VerifyEmailOTP(ctx context.Context, req entities.VerifyEma
 		return res.WrapError(err, "Can not verify email now", erres.CommonInternal)
 	}
 
-	if savedOTP != normalizedRequest.OTP {
+	if subtle.ConstantTimeCompare([]byte(savedOTP), []byte(normalizedRequest.OTP)) != 1 {
 		return &res.AppError{
 			Message:    "Invalid or expired otp",
 			Code:       erres.UserUnauthorized,
@@ -524,13 +536,15 @@ func (s *userService) ChangePassword(ctx context.Context, userID uuid.UUID, req 
 		return res.WrapError(err, "Can not change password now", erres.UserUpdateFailed)
 	}
 
-	// Optionally invalidate all refresh tokens for this user here to force re-login on all devices
-	// _ = s.refreshTokenStore.DeleteAllForUser(ctx, userID.String())
+	// Invalidate all refresh tokens for this user to force re-login on all devices
+	if err := s.refreshTokenStore.DeleteAllForUser(ctx, userID.String()); err != nil {
+		logs.WithContext(ctx).Warn("Failed to delete user refresh tokens on password change", "error", err)
+	}
 
 	return nil
 }
 
-func (s *userService) AdminChangePassword(ctx context.Context, targetUserUUID uuid.UUID, req entities.AdminChangePasswordRequest) error {
+func (s *userService) AdminChangePassword(ctx context.Context, callerRole string, targetUserUUID uuid.UUID, req entities.AdminChangePasswordRequest) error {
 	normalizedRequest := req
 	utils.NormalizeStrings(&normalizedRequest.NewPassword)
 
@@ -546,6 +560,14 @@ func (s *userService) AdminChangePassword(ctx context.Context, targetUserUUID uu
 		return res.WrapError(err, "Can not change password now", erres.UserGetFailed)
 	}
 
+	if !auth.CanManageUser(callerRole, user.Role) {
+		return &res.AppError{
+			Message:    "You do not have permission to manage this user's password",
+			Code:       erres.CommonForbidden,
+			StatusCode: http.StatusForbidden,
+		}
+	}
+
 	newPasswordHash, err := utils.HashPassword(normalizedRequest.NewPassword, s.cfg.App.SystemSecret)
 	if err != nil {
 		return res.WrapError(err, "Can not change password now", erres.CommonInternal)
@@ -556,6 +578,11 @@ func (s *userService) AdminChangePassword(ctx context.Context, targetUserUUID uu
 		PasswordHash: newPasswordHash,
 	}); err != nil {
 		return res.WrapError(err, "Can not change password now", erres.UserUpdateFailed)
+	}
+
+	// Invalidate all refresh tokens for this user to force re-login on all devices
+	if err := s.refreshTokenStore.DeleteAllForUser(ctx, targetUserUUID.String()); err != nil {
+		logs.WithContext(ctx).Warn("Failed to delete target user refresh tokens on admin password change", "error", err)
 	}
 
 	return nil
@@ -626,7 +653,7 @@ func (s *userService) ResetPassword(ctx context.Context, req entities.ResetPassw
 		return res.WrapError(err, "Can not verify OTP now", erres.CommonInternal)
 	}
 
-	if savedOTP != normalizedRequest.OTP {
+	if subtle.ConstantTimeCompare([]byte(savedOTP), []byte(normalizedRequest.OTP)) != 1 {
 		return &res.AppError{
 			Message:    "Invalid or expired otp",
 			Code:       erres.UserUnauthorized,
@@ -652,5 +679,11 @@ func (s *userService) ResetPassword(ctx context.Context, req entities.ResetPassw
 	}
 
 	_ = s.emailOTPStore.Delete(ctx, resetKey)
+
+	// Invalidate all refresh tokens for this user to force re-login on all devices
+	if err := s.refreshTokenStore.DeleteAllForUser(ctx, user.UUID.String()); err != nil {
+		logs.WithContext(ctx).Warn("Failed to delete user refresh tokens on password reset", "error", err)
+	}
+
 	return nil
 }
