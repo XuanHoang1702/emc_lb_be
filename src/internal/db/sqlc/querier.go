@@ -31,6 +31,7 @@ type Querier interface {
 	ListAllOrders(ctx context.Context) ([]Order, error)
 	ListOrdersByUserID(ctx context.Context, argUuid uuid.UUID) ([]Order, error)
 	LockUserAccount(ctx context.Context, arg LockUserAccountParams) error
+	MarkInventoryReturned(ctx context.Context, argUuid uuid.UUID) (int64, error)
 	SoftDeleteUserByUUID(ctx context.Context, argUuid uuid.UUID) error
 	UpdateFailedLoginAttempts(ctx context.Context, id int64) error
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error

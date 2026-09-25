@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"emc_lb/src/internal/repository"
 	"emc_lb/src/internal/service"
@@ -14,7 +15,26 @@ import (
 	"sync"
 
 	"github.com/jackc/pgx/v5"
+	"os"
 )
+
+func init() {
+	os.Setenv("PORT", "8080")
+	os.Setenv("ENVIRONMENT", "test")
+	os.Setenv("SYSTEM_SECRET", "test-secret")
+	os.Setenv("POSTGRES_URI", "postgres://user:pass@localhost:5432/db")
+	os.Setenv("MONGO_URI", "mongodb://localhost:27017")
+	os.Setenv("REDIS_URI", "redis://localhost:6379")
+	os.Setenv("SEPAY_API_KEY", "test")
+	os.Setenv("RESEND_API_KEY", "test")
+	os.Setenv("AWS_REGION", "test")
+	os.Setenv("AWS_ACCESS_KEY_ID", "test")
+	os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	os.Setenv("AWS_S3_ENDPOINT", "test")
+	os.Setenv("AWS_S3_BUCKET_NAME", "test")
+	os.Setenv("ACCESS_TOKEN_SECRET", "test")
+	os.Setenv("REFRESH_TOKEN_SECRET", "test")
+}
 
 // stubOrderRepository for testing
 type stubOrderRepository struct {
@@ -81,6 +101,10 @@ func (r *stubOrderRepository) ConfirmPaymentAtomic(_ context.Context, invoiceNum
 		}
 	}
 	return 0, nil
+}
+
+func (r *stubOrderRepository) MarkInventoryReturned(ctx context.Context, id string) error {
+	return nil
 }
 
 func (r *stubOrderRepository) GetCustomerInfoByUserID(ctx context.Context, userID string) (email string, name string, err error) {
@@ -197,6 +221,17 @@ func (r *stubProductRepository) DeductStock(_ context.Context, id string, quanti
 	p.SoldCount += quantity
 	r.products[id] = p
 	r.stockDeltas[id] -= quantity
+	return nil
+}
+
+func (r *stubProductRepository) RestoreStockIdempotent(ctx context.Context, id string, quantity int64, orderID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stockDeltas[id] += quantity
+	if p, ok := r.products[id]; ok {
+		p.Stock += quantity
+		r.products[id] = p
+	}
 	return nil
 }
 
@@ -633,3 +668,90 @@ func TestConcurrency_DoubleCancelPrevention(t *testing.T) {
 		t.Fatalf("expected stock delta +2, got %d", productRepo.stockDeltas["p1"])
 	}
 }
+
+func TestExpireOrder_Success(t *testing.T) {
+	productRepo := newStubProductRepo()
+	productRepo.products["p1"] = sampleProduct("p1", "shop-A", 100, 8)
+	orderRepo := newStubOrderRepo()
+	
+	now := time.Now().UTC()
+	past := now.Add(-1 * time.Hour)
+	
+	orderRepo.orders = append(orderRepo.orders, entities.Order{
+		ID:     "order-1",
+		UserID: "user-1",
+		Status: "pending",
+		PaymentStatus: "unpaid",
+		ExpiresAt: &past,
+		Items:  []entities.OrderItem{{ProductID: "p1", Quantity: 2}},
+	})
+
+	svc := service.NewOrderService(orderRepo, productRepo, nil, &stubCouponSvc{}, nil, nil, nil, nil)
+
+	err := svc.ExpireOrder(context.Background(), "order-1")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if productRepo.stockDeltas["p1"] != 2 {
+		t.Fatalf("expected stock delta +2, got %d", productRepo.stockDeltas["p1"])
+	}
+}
+
+func TestExpireOrder_NotYetExpired(t *testing.T) {
+	productRepo := newStubProductRepo()
+	orderRepo := newStubOrderRepo()
+	
+	now := time.Now().UTC()
+	future := now.Add(1 * time.Hour)
+	
+	orderRepo.orders = append(orderRepo.orders, entities.Order{
+		ID:     "order-1",
+		UserID: "user-1",
+		Status: "pending",
+		PaymentStatus: "unpaid",
+		ExpiresAt: &future,
+		Items:  []entities.OrderItem{{ProductID: "p1", Quantity: 2}},
+	})
+
+	svc := service.NewOrderService(orderRepo, productRepo, nil, &stubCouponSvc{}, nil, nil, nil, nil)
+
+	err := svc.ExpireOrder(context.Background(), "order-1")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if productRepo.stockDeltas["p1"] != 0 {
+		t.Fatalf("expected stock delta 0, got %d", productRepo.stockDeltas["p1"])
+	}
+	// order status should still be pending
+	if orderRepo.orders[0].Status != "pending" {
+		t.Fatalf("expected pending status, got %s", orderRepo.orders[0].Status)
+	}
+}
+
+func TestExpireOrder_AlreadyCancelledInventoryNotReturned(t *testing.T) {
+	productRepo := newStubProductRepo()
+	orderRepo := newStubOrderRepo()
+	
+	orderRepo.orders = append(orderRepo.orders, entities.Order{
+		ID:     "order-1",
+		UserID: "user-1",
+		Status: "cancelled",
+		PaymentStatus: "unpaid",
+		InventoryReturned: false,
+		Items:  []entities.OrderItem{{ProductID: "p1", Quantity: 2}},
+	})
+
+	svc := service.NewOrderService(orderRepo, productRepo, nil, &stubCouponSvc{}, nil, nil, nil, nil)
+
+	err := svc.ExpireOrder(context.Background(), "order-1")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if productRepo.stockDeltas["p1"] != 2 {
+		t.Fatalf("expected stock delta +2, got %d", productRepo.stockDeltas["p1"])
+	}
+}
+

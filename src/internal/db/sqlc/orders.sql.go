@@ -49,13 +49,13 @@ const createOrder = `-- name: CreateOrder :one
 INSERT INTO orders (
     payment_group_id, shop_id, user_id, invoice_number, sub_total, 
     coupon_code, discount_amount, tax_amount, total_amount, 
-    status, payment_status, payment_method, shipping_address, contact_phone
+    status, payment_status, payment_method, shipping_address, contact_phone, expires_at
 ) VALUES (
     $1, $2, (SELECT id FROM users WHERE users.uuid = $3), $4, $5, 
     $6, $7, $8, $9, 
-    $10, $11, $12, $13, $14
+    $10, $11, $12, $13, $14, $15
 )
-RETURNING id, uuid, payment_group_id, shop_id, user_id, invoice_number, sub_total, coupon_code, discount_amount, tax_amount, total_amount, status, payment_status, payment_method, payment_transaction_id, shipping_address, contact_phone, is_deleted, created_at, updated_at
+RETURNING id, uuid, payment_group_id, shop_id, user_id, invoice_number, sub_total, coupon_code, discount_amount, tax_amount, total_amount, status, payment_status, payment_method, payment_transaction_id, shipping_address, contact_phone, is_deleted, created_at, updated_at, expires_at, inventory_returned
 `
 
 type CreateOrderParams struct {
@@ -73,6 +73,7 @@ type CreateOrderParams struct {
 	PaymentMethod   *string        `json:"payment_method"`
 	ShippingAddress *string        `json:"shipping_address"`
 	ContactPhone    *string        `json:"contact_phone"`
+	ExpiresAt       time.Time      `json:"expires_at"`
 }
 
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
@@ -91,6 +92,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.PaymentMethod,
 		arg.ShippingAddress,
 		arg.ContactPhone,
+		arg.ExpiresAt,
 	)
 	var i Order
 	err := row.Scan(
@@ -114,6 +116,8 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.IsDeleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExpiresAt,
+		&i.InventoryReturned,
 	)
 	return i, err
 }
@@ -166,7 +170,7 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 }
 
 const getOrderByInvoiceNumber = `-- name: GetOrderByInvoiceNumber :one
-SELECT o.id, o.uuid, o.payment_group_id, o.shop_id, o.user_id, o.invoice_number, o.sub_total, o.coupon_code, o.discount_amount, o.tax_amount, o.total_amount, o.status, o.payment_status, o.payment_method, o.payment_transaction_id, o.shipping_address, o.contact_phone, o.is_deleted, o.created_at, o.updated_at, u.uuid as user_uuid 
+SELECT o.id, o.uuid, o.payment_group_id, o.shop_id, o.user_id, o.invoice_number, o.sub_total, o.coupon_code, o.discount_amount, o.tax_amount, o.total_amount, o.status, o.payment_status, o.payment_method, o.payment_transaction_id, o.shipping_address, o.contact_phone, o.is_deleted, o.created_at, o.updated_at, o.expires_at, o.inventory_returned, u.uuid as user_uuid 
 FROM orders o
 JOIN users u ON o.user_id = u.id
 WHERE o.invoice_number = $1 AND o.is_deleted = false
@@ -193,6 +197,8 @@ type GetOrderByInvoiceNumberRow struct {
 	IsDeleted            bool           `json:"is_deleted"`
 	CreatedAt            time.Time      `json:"created_at"`
 	UpdatedAt            time.Time      `json:"updated_at"`
+	ExpiresAt            time.Time      `json:"expires_at"`
+	InventoryReturned    bool           `json:"inventory_returned"`
 	UserUuid             uuid.UUID      `json:"user_uuid"`
 }
 
@@ -220,13 +226,15 @@ func (q *Queries) GetOrderByInvoiceNumber(ctx context.Context, invoiceNumber str
 		&i.IsDeleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExpiresAt,
+		&i.InventoryReturned,
 		&i.UserUuid,
 	)
 	return i, err
 }
 
 const getOrderByUUID = `-- name: GetOrderByUUID :one
-SELECT o.id, o.uuid, o.payment_group_id, o.shop_id, o.user_id, o.invoice_number, o.sub_total, o.coupon_code, o.discount_amount, o.tax_amount, o.total_amount, o.status, o.payment_status, o.payment_method, o.payment_transaction_id, o.shipping_address, o.contact_phone, o.is_deleted, o.created_at, o.updated_at, u.uuid as user_uuid 
+SELECT o.id, o.uuid, o.payment_group_id, o.shop_id, o.user_id, o.invoice_number, o.sub_total, o.coupon_code, o.discount_amount, o.tax_amount, o.total_amount, o.status, o.payment_status, o.payment_method, o.payment_transaction_id, o.shipping_address, o.contact_phone, o.is_deleted, o.created_at, o.updated_at, o.expires_at, o.inventory_returned, u.uuid as user_uuid 
 FROM orders o
 JOIN users u ON o.user_id = u.id
 WHERE o.uuid = $1 AND o.is_deleted = false
@@ -253,6 +261,8 @@ type GetOrderByUUIDRow struct {
 	IsDeleted            bool           `json:"is_deleted"`
 	CreatedAt            time.Time      `json:"created_at"`
 	UpdatedAt            time.Time      `json:"updated_at"`
+	ExpiresAt            time.Time      `json:"expires_at"`
+	InventoryReturned    bool           `json:"inventory_returned"`
 	UserUuid             uuid.UUID      `json:"user_uuid"`
 }
 
@@ -280,6 +290,8 @@ func (q *Queries) GetOrderByUUID(ctx context.Context, argUuid uuid.UUID) (GetOrd
 		&i.IsDeleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExpiresAt,
+		&i.InventoryReturned,
 		&i.UserUuid,
 	)
 	return i, err
@@ -322,7 +334,7 @@ func (q *Queries) GetOrderItemsByOrderID(ctx context.Context, orderID int64) ([]
 }
 
 const listAllOrders = `-- name: ListAllOrders :many
-SELECT id, uuid, payment_group_id, shop_id, user_id, invoice_number, sub_total, coupon_code, discount_amount, tax_amount, total_amount, status, payment_status, payment_method, payment_transaction_id, shipping_address, contact_phone, is_deleted, created_at, updated_at FROM orders 
+SELECT id, uuid, payment_group_id, shop_id, user_id, invoice_number, sub_total, coupon_code, discount_amount, tax_amount, total_amount, status, payment_status, payment_method, payment_transaction_id, shipping_address, contact_phone, is_deleted, created_at, updated_at, expires_at, inventory_returned FROM orders 
 WHERE is_deleted = false
 ORDER BY created_at DESC
 `
@@ -357,6 +369,8 @@ func (q *Queries) ListAllOrders(ctx context.Context) ([]Order, error) {
 			&i.IsDeleted,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ExpiresAt,
+			&i.InventoryReturned,
 		); err != nil {
 			return nil, err
 		}
@@ -369,7 +383,7 @@ func (q *Queries) ListAllOrders(ctx context.Context) ([]Order, error) {
 }
 
 const listOrdersByUserID = `-- name: ListOrdersByUserID :many
-SELECT id, uuid, payment_group_id, shop_id, user_id, invoice_number, sub_total, coupon_code, discount_amount, tax_amount, total_amount, status, payment_status, payment_method, payment_transaction_id, shipping_address, contact_phone, is_deleted, created_at, updated_at FROM orders 
+SELECT id, uuid, payment_group_id, shop_id, user_id, invoice_number, sub_total, coupon_code, discount_amount, tax_amount, total_amount, status, payment_status, payment_method, payment_transaction_id, shipping_address, contact_phone, is_deleted, created_at, updated_at, expires_at, inventory_returned FROM orders 
 WHERE user_id = (SELECT id FROM users WHERE users.uuid = $1) AND is_deleted = false
 ORDER BY created_at DESC
 `
@@ -404,6 +418,8 @@ func (q *Queries) ListOrdersByUserID(ctx context.Context, argUuid uuid.UUID) ([]
 			&i.IsDeleted,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ExpiresAt,
+			&i.InventoryReturned,
 		); err != nil {
 			return nil, err
 		}
@@ -413,6 +429,20 @@ func (q *Queries) ListOrdersByUserID(ctx context.Context, argUuid uuid.UUID) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const markInventoryReturned = `-- name: MarkInventoryReturned :execrows
+UPDATE orders
+SET inventory_returned = true, updated_at = NOW()
+WHERE uuid = $1 AND inventory_returned = false
+`
+
+func (q *Queries) MarkInventoryReturned(ctx context.Context, argUuid uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markInventoryReturned, argUuid)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateOrderStatus = `-- name: UpdateOrderStatus :exec

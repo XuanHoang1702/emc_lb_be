@@ -29,6 +29,7 @@ func (m *mockProductRepo) Update(ctx context.Context, id string, data map[string
 func (m *mockProductRepo) Delete(ctx context.Context, id string, data map[string]any) error { return nil }
 func (m *mockProductRepo) UpdateStock(ctx context.Context, id string, stockDelta int64, soldDelta int64) error { return nil }
 func (m *mockProductRepo) DeductStock(ctx context.Context, id string, quantity int64) error { return nil }
+func (m *mockProductRepo) RestoreStockIdempotent(ctx context.Context, id string, quantity int64, orderID string) error { return nil }
 
 // mockCacheStore
 type mockCacheStore struct {

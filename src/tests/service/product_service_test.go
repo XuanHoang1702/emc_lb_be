@@ -181,6 +181,14 @@ func (r *listableProductRepo) DeductStock(_ context.Context, id string, quantity
 	return nil
 }
 
+func (r *listableProductRepo) RestoreStockIdempotent(ctx context.Context, id string, quantity int64, orderID string) error {
+	if p, ok := r.products[id]; ok {
+		p.Stock += quantity
+		r.products[id] = p
+	}
+	return nil
+}
+
 
 
 func TestUpdate_InvalidatesCache(t *testing.T) {

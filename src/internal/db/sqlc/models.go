@@ -42,6 +42,8 @@ type Order struct {
 	IsDeleted            bool           `json:"is_deleted"`
 	CreatedAt            time.Time      `json:"created_at"`
 	UpdatedAt            time.Time      `json:"updated_at"`
+	ExpiresAt            time.Time      `json:"expires_at"`
+	InventoryReturned    bool           `json:"inventory_returned"`
 }
 
 type OrderItem struct {

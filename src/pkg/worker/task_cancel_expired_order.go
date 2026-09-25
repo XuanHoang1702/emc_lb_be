@@ -20,9 +20,11 @@ func (processor *RedisTaskProcessor) ProcessTaskCancelExpiredOrder(ctx context.C
 	err := processor.orderManager.ExpireOrder(ctx, payload.OrderID)
 	if err != nil {
 		logs.WithContext(ctx).Warn("Failed to expire order", "order_id", payload.OrderID, "error", err)
+		OrderCancellationFailure.Inc()
 		return err // Retry if it fails due to DB issue, state rules are handled inside
 	}
 
+	OrderCancellationSuccess.Inc()
 	logs.WithContext(ctx).Info("Successfully cancelled expired order", "order_id", payload.OrderID)
 	return nil
 }

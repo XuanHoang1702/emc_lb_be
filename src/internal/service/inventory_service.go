@@ -32,6 +32,9 @@ type InventoryService interface {
 	// RestoreStock atomically increments stock in Redis (useful for rollbacks/cancellations).
 	RestoreStock(ctx context.Context, productID string, quantity int64) error
 
+	// RestoreStockIdempotent atomically increments stock only once per order.
+	RestoreStockIdempotent(ctx context.Context, productID string, quantity int64, orderID string) error
+
 	// SyncStockToRedis is used to warm up the cache from MongoDB to Redis.
 	SyncStockToRedis(ctx context.Context, productID string, stock int64) error
 }
@@ -84,6 +87,22 @@ func (s *inventoryService) RestoreStock(ctx context.Context, productID string, q
 	}
 	// If it doesn't exist in Redis, it means it wasn't cached anyway. Do nothing.
 	return nil
+}
+
+func (s *inventoryService) RestoreStockIdempotent(ctx context.Context, productID string, quantity int64, orderID string) error {
+	releaseKey := fmt.Sprintf("order_released:%s:%s", orderID, productID)
+	// Try to set the key. If it exists, it was already released.
+	set, err := s.redisClient.SetNX(ctx, releaseKey, "1", 0).Result() // No expiration to guarantee idempotency forever, or a long time like 30 days
+	if err != nil {
+		return err
+	}
+	if !set {
+		// Already released
+		return nil
+	}
+	
+	// If set was successful, restore the stock
+	return s.RestoreStock(ctx, productID, quantity)
 }
 
 func (s *inventoryService) SyncStockToRedis(ctx context.Context, productID string, stock int64) error {

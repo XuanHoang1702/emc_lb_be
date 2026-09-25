@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -22,6 +23,7 @@ type OrderRepository interface {
 	UpdateStatus(context.Context, string, string) error
 	UpdateStatusAtomic(context.Context, string, string, string) error
 	ConfirmPaymentAtomic(ctx context.Context, invoiceNumber, expectedCurrentPaymentStatus, newPaymentStatus, newOrderStatus, transactionID string) (int64, error)
+	MarkInventoryReturned(ctx context.Context, id string) error
 	GetCustomerInfoByUserID(ctx context.Context, userID string) (email string, name string, err error)
 }
 
@@ -65,6 +67,10 @@ func (r *orderRepository) Create(ctx context.Context, order entities.Order) (ent
 		PaymentMethod:   &order.PaymentMethod,
 		ShippingAddress: &order.ShippingAddress,
 		ContactPhone:    &order.ContactPhone,
+	}
+
+	if order.ExpiresAt != nil {
+		params.ExpiresAt = *order.ExpiresAt
 	}
 
 	row, err := r.db.CreateOrder(ctx, params)
@@ -199,6 +205,21 @@ func (r *orderRepository) ConfirmPaymentAtomic(ctx context.Context, invoiceNumbe
 	})
 }
 
+func (r *orderRepository) MarkInventoryReturned(ctx context.Context, id string) error {
+	orderUUID, err := uuid.Parse(id)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := r.db.MarkInventoryReturned(ctx, orderUUID)
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return pgx.ErrNoRows // Either already marked or not found
+	}
+	return nil
+}
+
 func (r *orderRepository) GetCustomerInfoByUserID(ctx context.Context, userID string) (string, string, error) {
 	uUUID, err := uuid.Parse(userID)
 	if err != nil {
@@ -256,6 +277,12 @@ func toOrderEntityFromSqlc(row sqlc.Order, userID string) entities.Order {
 	tax, _ := row.TaxAmount.Float64Value()
 	total, _ := row.TotalAmount.Float64Value()
 
+	var expiresAt *time.Time
+	if !row.ExpiresAt.IsZero() {
+		t := row.ExpiresAt
+		expiresAt = &t
+	}
+
 	return entities.Order{
 		ID:                   row.Uuid.String(),
 		PaymentGroupID:       paymentGroupID,
@@ -274,8 +301,10 @@ func toOrderEntityFromSqlc(row sqlc.Order, userID string) entities.Order {
 		ShippingAddress:      shipping,
 		ContactPhone:         phone,
 		IsDeleted:            row.IsDeleted,
+		InventoryReturned:    row.InventoryReturned,
 		CreatedAt:            row.CreatedAt,
 		UpdatedAt:            row.UpdatedAt,
+		ExpiresAt:            expiresAt,
 	}
 }
 
@@ -313,6 +342,12 @@ func toOrderEntityFromSqlcRow(row sqlc.GetOrderByUUIDRow) entities.Order {
 	tax, _ := row.TaxAmount.Float64Value()
 	total, _ := row.TotalAmount.Float64Value()
 
+	var expiresAt *time.Time
+	if !row.ExpiresAt.IsZero() {
+		t := row.ExpiresAt
+		expiresAt = &t
+	}
+
 	return entities.Order{
 		ID:                   row.Uuid.String(),
 		PaymentGroupID:       paymentGroupID,
@@ -331,8 +366,10 @@ func toOrderEntityFromSqlcRow(row sqlc.GetOrderByUUIDRow) entities.Order {
 		ShippingAddress:      shipping,
 		ContactPhone:         phone,
 		IsDeleted:            row.IsDeleted,
+		InventoryReturned:    row.InventoryReturned,
 		CreatedAt:            row.CreatedAt,
 		UpdatedAt:            row.UpdatedAt,
+		ExpiresAt:            expiresAt,
 	}
 }
 
@@ -370,6 +407,12 @@ func toOrderEntityFromSqlcInvoiceRow(row sqlc.GetOrderByInvoiceNumberRow) entiti
 	tax, _ := row.TaxAmount.Float64Value()
 	total, _ := row.TotalAmount.Float64Value()
 
+	var expiresAt *time.Time
+	if !row.ExpiresAt.IsZero() {
+		t := row.ExpiresAt
+		expiresAt = &t
+	}
+
 	return entities.Order{
 		ID:                   row.Uuid.String(),
 		PaymentGroupID:       paymentGroupID,
@@ -388,8 +431,10 @@ func toOrderEntityFromSqlcInvoiceRow(row sqlc.GetOrderByInvoiceNumberRow) entiti
 		ShippingAddress:      shipping,
 		ContactPhone:         phone,
 		IsDeleted:            row.IsDeleted,
+		InventoryReturned:    row.InventoryReturned,
 		CreatedAt:            row.CreatedAt,
 		UpdatedAt:            row.UpdatedAt,
+		ExpiresAt:            expiresAt,
 	}
 }
 

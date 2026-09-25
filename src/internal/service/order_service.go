@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"emc_lb/src/internal/repository"
+	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/entities"
 	erres "emc_lb/src/pkg/errors"
@@ -192,6 +193,8 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 
 			invoiceNumber := fmt.Sprintf("INV-%s", strings.ToUpper(strings.ReplaceAll(uuid.New().String(), "-", ""))[:16])
 			now := time.Now().UTC()
+			ttl := config.Get().App.OrderPaymentTTL
+			expiresAt := now.Add(ttl)
 
 			order := entities.Order{
 				PaymentGroupID:  paymentGroupID,
@@ -211,6 +214,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 				ContactPhone:    req.ContactPhone,
 				CreatedAt:       now,
 				UpdatedAt:       now,
+				ExpiresAt:       &expiresAt,
 			}
 
 			createdOrder, err := repo.Create(opCtx, order)
@@ -223,7 +227,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 				payload := &worker.PayloadCancelExpiredOrder{
 					OrderID: createdOrder.ID,
 				}
-				if enqueueErr := s.taskDistributor.DistributeTaskCancelExpiredOrder(ctx, payload, asynq.ProcessIn(15*time.Minute)); enqueueErr != nil {
+				if enqueueErr := s.taskDistributor.DistributeTaskCancelExpiredOrder(ctx, payload, asynq.ProcessAt(expiresAt)); enqueueErr != nil {
 					logs.WithContext(ctx).Error("failed to enqueue cancel expired order task", "order_id", createdOrder.ID, "error", enqueueErr)
 				}
 			}
@@ -417,10 +421,19 @@ func (s *orderService) ExpireOrder(ctx context.Context, id string) error {
 		return err
 	}
 
+	// Check if already cancelled but inventory not returned
+	if order.Status == entities.OrderStatusCancelled && !order.InventoryReturned {
+		return s.releaseInventory(ctx, order)
+	}
+
 	// Only expire if the order is still pending and unpaid.
-	// If it was already paid, cancelled, or transitioned to processing, we do nothing and return success.
 	if order.Status != entities.OrderStatusPending || order.PaymentStatus != entities.PaymentStatusUnpaid {
 		logs.WithContext(ctx).Info("order is no longer pending/unpaid, skipping expiration", "order_id", id, "status", order.Status, "payment_status", order.PaymentStatus)
+		return nil
+	}
+
+	if order.ExpiresAt != nil && time.Now().UTC().Before(*order.ExpiresAt) {
+		logs.WithContext(ctx).Info("order is not yet expired, skipping", "order_id", id)
 		return nil
 	}
 
@@ -428,60 +441,59 @@ func (s *orderService) ExpireOrder(ctx context.Context, id string) error {
 }
 
 func (s *orderService) cancelOrderAtomic(ctx context.Context, order entities.Order) error {
-	coreLogic := func(opCtx context.Context, repo repository.OrderRepository) error {
-		// Atomic status update
-		if err := repo.UpdateStatusAtomic(opCtx, order.ID, order.Status, entities.OrderStatusCancelled); err != nil {
-			if err == pgx.ErrNoRows {
-				return &res.AppError{
-					Message:    "Order is no longer in a state that can be cancelled",
-					Code:       erres.CommonBadRequest,
-					StatusCode: http.StatusBadRequest,
-				}
+	if err := s.orderRepository.UpdateStatusAtomic(ctx, order.ID, order.Status, entities.OrderStatusCancelled); err != nil {
+		if err == pgx.ErrNoRows {
+			// It might be already cancelled. Check if we need to release inventory.
+			currentOrder, fetchErr := s.orderRepository.GetByID(ctx, order.ID)
+			if fetchErr == nil && currentOrder.Status == entities.OrderStatusCancelled && !currentOrder.InventoryReturned {
+				return s.releaseInventory(ctx, currentOrder)
 			}
-			return res.WrapError(err, "Failed to update order status", erres.CommonInternal)
+			return &res.AppError{
+				Message:    "Order is no longer in a state that can be cancelled",
+				Code:       erres.CommonBadRequest,
+				StatusCode: http.StatusBadRequest,
+			}
 		}
+		return res.WrapError(err, "Failed to update order status", erres.CommonInternal)
+	}
 
-		// Restore stock
-		for _, item := range order.Items {
-			if restoreErr := s.productRepository.UpdateStock(opCtx, item.ProductID, item.Quantity, -item.Quantity); restoreErr != nil {
-				return res.WrapError(restoreErr, "Failed to restore stock on cancellation", erres.CommonInternal)
-			} else if s.inventoryService != nil {
-				_ = s.inventoryService.RestoreStock(context.Background(), item.ProductID, item.Quantity)
-			}
-		}
+	return s.releaseInventory(ctx, order)
+}
+
+func (s *orderService) releaseInventory(ctx context.Context, order entities.Order) error {
+	if order.InventoryReturned {
 		return nil
 	}
 
-	var execErr error
-	if s.pgxpool != nil {
-		tx, err := s.pgxpool.Begin(ctx)
-		if err != nil {
-			return res.WrapError(err, "Failed to start database session", erres.CommonInternal)
+	for _, item := range order.Items {
+		// Idempotent Mongo restore
+		if restoreErr := s.productRepository.RestoreStockIdempotent(ctx, item.ProductID, item.Quantity, order.ID); restoreErr != nil {
+			worker.OrderCancellationInventoryReleaseFailure.Inc()
+			return res.WrapError(restoreErr, "Failed to restore stock on cancellation", erres.CommonInternal)
 		}
-		defer func() { _ = tx.Rollback(ctx) }()
 
-		txRepo := s.orderRepository.WithTx(tx)
-		if err := coreLogic(ctx, txRepo); err != nil {
-			return err
+		// Idempotent Redis restore
+		if s.inventoryService != nil {
+			if restoreErr := s.inventoryService.RestoreStockIdempotent(context.Background(), item.ProductID, item.Quantity, order.ID); restoreErr != nil {
+				worker.OrderCancellationInventoryReleaseFailure.Inc()
+				logs.WithContext(ctx).Warn("Failed to restore stock in redis", "error", restoreErr)
+			}
 		}
-		if err := tx.Commit(ctx); err != nil {
-			return res.WrapError(err, "Failed to commit cancellation", erres.CommonInternal)
-		}
-	} else {
-		execErr = coreLogic(ctx, s.orderRepository)
-	}
 
-	if execErr != nil {
-		return execErr
-	}
-
-	if s.productCache != nil {
-		for _, item := range order.Items {
+		if s.productCache != nil {
 			if cacheErr := s.productCache.Invalidate(ctx, item.ProductID); cacheErr != nil {
 				logs.WithContext(ctx).Warn("product cache invalidation failed after cancellation", "order_id", order.ID, "product_id", item.ProductID, "error", cacheErr)
 			}
 		}
 	}
+
+	if err := s.orderRepository.MarkInventoryReturned(ctx, order.ID); err != nil {
+		if err != pgx.ErrNoRows {
+			worker.OrderCancellationInventoryReleaseFailure.Inc()
+			return res.WrapError(err, "Failed to mark inventory as returned", erres.CommonInternal)
+		}
+	}
+
 	return nil
 }
 
@@ -659,6 +671,8 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 
 			invoiceNumber := fmt.Sprintf("INV-%s", strings.ToUpper(strings.ReplaceAll(uuid.New().String(), "-", ""))[:16])
 			now := time.Now().UTC()
+			ttl := config.Get().App.OrderPaymentTTL
+			expiresAt := now.Add(ttl)
 
 			order := entities.Order{
 				PaymentGroupID:  paymentGroupID,
@@ -678,6 +692,7 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 				ContactPhone:    req.ContactPhone,
 				CreatedAt:       now,
 				UpdatedAt:       now,
+				ExpiresAt:       &expiresAt,
 			}
 
 			createdOrder, err := repo.Create(opCtx, order)
@@ -690,7 +705,7 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 				payload := &worker.PayloadCancelExpiredOrder{
 					OrderID: createdOrder.ID,
 				}
-				if enqueueErr := s.taskDistributor.DistributeTaskCancelExpiredOrder(ctx, payload, asynq.ProcessIn(15*time.Minute)); enqueueErr != nil {
+				if enqueueErr := s.taskDistributor.DistributeTaskCancelExpiredOrder(ctx, payload, asynq.ProcessAt(expiresAt)); enqueueErr != nil {
 					logs.WithContext(ctx).Error("failed to enqueue cancel expired order task", "order_id", createdOrder.ID, "error", enqueueErr)
 				}
 			}

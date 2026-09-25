@@ -22,5 +22,6 @@ func ToOrderResponse(order entities.Order) entities.OrderResponse {
 		ContactPhone:    order.ContactPhone,
 		CreatedAt:       order.CreatedAt,
 		UpdatedAt:       order.UpdatedAt,
+		ExpiresAt:       order.ExpiresAt,
 	}
 }

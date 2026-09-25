@@ -31,8 +31,10 @@ type Order struct {
 	ShippingAddress      string      `json:"shipping_address"`
 	ContactPhone         string      `json:"contact_phone"`
 	IsDeleted            bool        `json:"is_deleted"`
+	InventoryReturned    bool        `json:"inventory_returned"`
 	CreatedAt            time.Time   `json:"created_at"`
 	UpdatedAt            time.Time   `json:"updated_at"`
+	ExpiresAt            *time.Time  `json:"expires_at,omitempty"`
 }
 
 type CreateOrderRequest struct {
@@ -63,6 +65,7 @@ type OrderResponse struct {
 	ContactPhone         string      `json:"contact_phone"`
 	CreatedAt            time.Time   `json:"created_at"`
 	UpdatedAt            time.Time   `json:"updated_at"`
+	ExpiresAt            *time.Time  `json:"expires_at,omitempty"`
 }
 
 type CheckoutItemRequest struct {

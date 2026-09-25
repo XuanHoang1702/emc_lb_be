@@ -2,11 +2,11 @@
 INSERT INTO orders (
     payment_group_id, shop_id, user_id, invoice_number, sub_total, 
     coupon_code, discount_amount, tax_amount, total_amount, 
-    status, payment_status, payment_method, shipping_address, contact_phone
+    status, payment_status, payment_method, shipping_address, contact_phone, expires_at
 ) VALUES (
     $1, $2, (SELECT id FROM users WHERE users.uuid = $3), $4, $5, 
     $6, $7, $8, $9, 
-    $10, $11, $12, $13, $14
+    $10, $11, $12, $13, $14, $15
 )
 RETURNING *;
 
@@ -64,3 +64,8 @@ WHERE invoice_number = $1
 UPDATE orders
 SET status = $3, updated_at = NOW()
 WHERE uuid = $1 AND status = $2 AND is_deleted = false;
+
+-- name: MarkInventoryReturned :execrows
+UPDATE orders
+SET inventory_returned = true, updated_at = NOW()
+WHERE uuid = $1 AND inventory_returned = false;

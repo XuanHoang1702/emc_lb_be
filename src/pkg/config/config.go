@@ -36,8 +36,9 @@ type AppSettings struct {
 	Mode         string // "debug" | "release"
 	SystemSecret string
 	APIKey       string
-	CORSOrigins  string
-	LogLevel     string // "debug" | "info" | "warn" | "error"
+	CORSOrigins     string
+	LogLevel        string // "debug" | "info" | "warn" | "error"
+	OrderPaymentTTL time.Duration
 }
 
 type PostgresSettings struct {
@@ -143,10 +144,11 @@ func load() (*AppConfig, error) {
 		App: AppSettings{
 			Port:         getEnv("APP_PORT", "8080"),
 			Mode:         getEnv("GIN_MODE", "debug"),
-			SystemSecret: getEnv("SYSTEM_SECRET", ""),
-			APIKey:       getEnv("API_KEY", ""),
-			CORSOrigins:  getEnv("CORS_ALLOWED_ORIGINS", "*"),
-			LogLevel:     getEnv("LOG_LEVEL", "info"),
+			SystemSecret:    getEnv("SYSTEM_SECRET", ""),
+			APIKey:          getEnv("API_KEY", ""),
+			CORSOrigins:     getEnv("CORS_ALLOWED_ORIGINS", "*"),
+			LogLevel:        getEnv("LOG_LEVEL", "info"),
+			OrderPaymentTTL: getEnvDuration("ORDER_PAYMENT_TIMEOUT", 15*time.Minute),
 		},
 		Postgres: PostgresSettings{
 			Host:     getEnv("POSTGRES_HOST", "localhost"),
