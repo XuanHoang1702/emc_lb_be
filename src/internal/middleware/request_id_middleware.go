@@ -23,9 +23,20 @@ const (
 //   - stored in gin.Context under ContextRequestIDKey for handlers/services to read
 //   - echoed back in the response header X-Request-ID for client-side correlation
 func RequestIDMiddleware() gin.HandlerFunc {
+	// IsValidRequestID checks if a request ID is alphanumeric and hyphens only
+	isValidRequestID := func(s string) bool {
+		for _, c := range s {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+				return false
+			}
+		}
+		return true
+	}
+
 	return func(ctx *gin.Context) {
 		requestID := ctx.GetHeader(HeaderRequestID)
-		if requestID == "" {
+		// Limit length to 64 and enforce safe characters to prevent log injection / high cardinality attacks
+		if requestID == "" || len(requestID) > 64 || !isValidRequestID(requestID) {
 			requestID = uuid.New().String()
 		}
 

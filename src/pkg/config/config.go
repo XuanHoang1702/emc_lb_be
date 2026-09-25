@@ -110,6 +110,7 @@ type PaymentSettings struct {
 	SepaySuccessURL string
 	SepayErrorURL   string
 	SepayCancelURL  string
+	SepayAllowedCallbackHosts string
 }
 
 // Get returns the singleton AppConfig. Panics on first call if config is invalid.
@@ -208,6 +209,7 @@ func load() (*AppConfig, error) {
 			SepaySuccessURL: getEnv("SEPAY_SUCCESS_URL", ""),
 			SepayErrorURL:   getEnv("SEPAY_ERROR_URL", ""),
 			SepayCancelURL:  getEnv("SEPAY_CANCEL_URL", ""),
+			SepayAllowedCallbackHosts: getEnv("SEPAY_ALLOWED_CALLBACK_HOSTS", ""),
 		},
 		Cache: CacheSettings{
 			CategoryTTL:      getEnvDuration("CACHE_CATEGORY_TTL", 24*time.Hour),

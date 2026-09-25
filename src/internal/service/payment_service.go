@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -30,10 +31,36 @@ type paymentService struct {
 	successURL   string
 	errorURL     string
 	cancelURL    string
+	allowedHosts []string
 	orderService OrderService
 }
 
 func NewPaymentService(cfg *config.AppConfig, orderService OrderService) PaymentService {
+	// Build allowed hosts
+	var allowedHosts []string
+	if cfg.Payment.SepayAllowedCallbackHosts != "" {
+		for _, h := range strings.Split(cfg.Payment.SepayAllowedCallbackHosts, ",") {
+			h = strings.TrimSpace(h)
+			if h != "" {
+				allowedHosts = append(allowedHosts, h)
+			}
+		}
+	} else {
+		// Fallback to deriving from default URLs
+		hosts := make(map[string]bool)
+		for _, rawURL := range []string{cfg.Payment.SepaySuccessURL, cfg.Payment.SepayErrorURL, cfg.Payment.SepayCancelURL} {
+			if rawURL == "" {
+				continue
+			}
+			if u, err := url.Parse(rawURL); err == nil && u.Hostname() != "" {
+				hosts[u.Hostname()] = true
+			}
+		}
+		for h := range hosts {
+			allowedHosts = append(allowedHosts, h)
+		}
+	}
+
 	return &paymentService{
 		merchantID:   cfg.Payment.SepayMerchantID,
 		secretKey:    cfg.Payment.SepaySecretKey,
@@ -41,6 +68,7 @@ func NewPaymentService(cfg *config.AppConfig, orderService OrderService) Payment
 		successURL:   cfg.Payment.SepaySuccessURL,
 		errorURL:     cfg.Payment.SepayErrorURL,
 		cancelURL:    cfg.Payment.SepayCancelURL,
+		allowedHosts: allowedHosts,
 		orderService: orderService,
 	}
 }
@@ -90,6 +118,29 @@ func (s *paymentService) InitCheckout(ctx context.Context, req entities.Checkout
 	cancelURL := s.cancelURL
 	if req.CancelURL != "" {
 		cancelURL = req.CancelURL
+	}
+
+	// Validate the final URLs
+	if err := ValidateCallbackURL(successURL, s.allowedHosts, s.env); err != nil {
+		return nil, &res.AppError{
+			Message:    "Invalid success_url: " + err.Error(),
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+	if err := ValidateCallbackURL(errorURL, s.allowedHosts, s.env); err != nil {
+		return nil, &res.AppError{
+			Message:    "Invalid error_url: " + err.Error(),
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+	if err := ValidateCallbackURL(cancelURL, s.allowedHosts, s.env); err != nil {
+		return nil, &res.AppError{
+			Message:    "Invalid cancel_url: " + err.Error(),
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
 	// Build form fields per official SePay documentation

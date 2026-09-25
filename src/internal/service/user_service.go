@@ -264,7 +264,7 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
 	}
 
-	if session.SessionVersion < user.SessionVersion {
+	if session.SessionVersion != user.SessionVersion {
 		// Session was invalidated (e.g. by password change)
 		_ = s.refreshTokenStore.Delete(ctx, normalizedRequest.RefreshToken)
 		return entities.LoginUserResponse{}, &res.AppError{

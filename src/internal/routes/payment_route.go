@@ -39,7 +39,9 @@ func (r *PaymentRoute) RegisterPublic(router gin.IRouter) {
 	}
 
 	// Test endpoint: Generates a clickable link/redirect for testing the payment gateway in browser
-	paymentGroup.GET("/test-checkout", r.paymentHandler.HandleTestCheckoutLink)
+	if gin.Mode() != gin.ReleaseMode {
+		paymentGroup.GET("/test-checkout", r.paymentHandler.HandleTestCheckoutLink)
+	}
 
 	// Callback endpoints for SePay redirection after payment
 	paymentGroup.GET("/success", r.paymentHandler.HandlePaymentSuccess)
