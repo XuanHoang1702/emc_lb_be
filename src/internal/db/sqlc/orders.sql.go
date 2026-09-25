@@ -21,7 +21,6 @@ SET payment_status = $2,
     updated_at = NOW()
 WHERE invoice_number = $1 
   AND payment_status = 'unpaid' 
-  AND status != 'cancelled'
   AND is_deleted = false
 `
 
@@ -167,6 +166,59 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 		&i.SubTotal,
 	)
 	return i, err
+}
+
+const getExpiredPendingOrders = `-- name: GetExpiredPendingOrders :many
+SELECT id, uuid, payment_group_id, shop_id, user_id, invoice_number, sub_total, coupon_code, discount_amount, tax_amount, total_amount, status, payment_status, payment_method, payment_transaction_id, shipping_address, contact_phone, is_deleted, created_at, updated_at, expires_at, inventory_returned FROM orders
+WHERE status = 'pending' 
+  AND payment_status = 'unpaid' 
+  AND expires_at < NOW() 
+  AND is_deleted = false
+ORDER BY created_at ASC
+LIMIT 100
+`
+
+func (q *Queries) GetExpiredPendingOrders(ctx context.Context) ([]Order, error) {
+	rows, err := q.db.Query(ctx, getExpiredPendingOrders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Order{}
+	for rows.Next() {
+		var i Order
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uuid,
+			&i.PaymentGroupID,
+			&i.ShopID,
+			&i.UserID,
+			&i.InvoiceNumber,
+			&i.SubTotal,
+			&i.CouponCode,
+			&i.DiscountAmount,
+			&i.TaxAmount,
+			&i.TotalAmount,
+			&i.Status,
+			&i.PaymentStatus,
+			&i.PaymentMethod,
+			&i.PaymentTransactionID,
+			&i.ShippingAddress,
+			&i.ContactPhone,
+			&i.IsDeleted,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ExpiresAt,
+			&i.InventoryReturned,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getOrderByInvoiceNumber = `-- name: GetOrderByInvoiceNumber :one

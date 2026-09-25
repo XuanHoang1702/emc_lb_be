@@ -111,6 +111,17 @@ func (r *stubOrderRepository) GetCustomerInfoByUserID(ctx context.Context, userI
 	return "test@example.com", "Test User", nil
 }
 
+func (r *stubOrderRepository) GetExpiredPendingOrders(ctx context.Context) ([]entities.Order, error) {
+	var expired []entities.Order
+	now := time.Now().UTC()
+	for _, o := range r.orders {
+		if o.Status == "pending" && o.PaymentStatus == "unpaid" && o.ExpiresAt != nil && o.ExpiresAt.Before(now) {
+			expired = append(expired, o)
+		}
+	}
+	return expired, nil
+}
+
 func (r *stubOrderRepository) WithTx(tx pgx.Tx) repository.OrderRepository {
 	return r
 }

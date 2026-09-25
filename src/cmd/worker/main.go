@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"emc_lb/src/internal/app/module"
 	"emc_lb/src/internal/db/sqlc"
@@ -78,10 +79,30 @@ func main() {
 	}
 	logger.Info("worker server started")
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				logger.Info("running cron sweep for expired orders")
+				if err := orderMod.Service().SweepExpiredOrders(ctx); err != nil {
+					logger.Error("cron sweep failed", "error", err)
+				}
+			}
+		}
+	}()
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	sig := <-quit
+	cancel() // Stop the cron loop
 	logger.Info("shutting down worker server", "signal", sig.String())
 
 	processor.Shutdown()

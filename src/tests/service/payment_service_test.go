@@ -69,6 +69,9 @@ func (s *stubPaymentOrderSvc) CancelOrder(ctx context.Context, userID string, or
 func (s *stubPaymentOrderSvc) ExpireOrder(ctx context.Context, orderID string) error {
 	return nil
 }
+func (s *stubPaymentOrderSvc) SweepExpiredOrders(ctx context.Context) error {
+	return nil
+}
 
 func TestProcessIPN_OrderPaid(t *testing.T) {
 	var markedInvoice string

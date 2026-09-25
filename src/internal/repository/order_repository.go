@@ -25,6 +25,7 @@ type OrderRepository interface {
 	ConfirmPaymentAtomic(ctx context.Context, invoiceNumber, expectedCurrentPaymentStatus, newPaymentStatus, newOrderStatus, transactionID string) (int64, error)
 	MarkInventoryReturned(ctx context.Context, id string) error
 	GetCustomerInfoByUserID(ctx context.Context, userID string) (email string, name string, err error)
+	GetExpiredPendingOrders(ctx context.Context) ([]entities.Order, error)
 }
 
 type orderRepository struct {
@@ -240,6 +241,19 @@ func (r *orderRepository) GetCustomerInfoByUserID(ctx context.Context, userID st
 		}
 	}
 	return user.Email, name, nil
+}
+
+func (r *orderRepository) GetExpiredPendingOrders(ctx context.Context) ([]entities.Order, error) {
+	rows, err := r.db.GetExpiredPendingOrders(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	orders := make([]entities.Order, 0, len(rows))
+	for _, row := range rows {
+		orders = append(orders, toOrderEntityFromSqlc(row, "")) // User ID not mapped in this simple sweep query, but we only need order ID anyway
+	}
+	return orders, nil
 }
 
 // Helpers

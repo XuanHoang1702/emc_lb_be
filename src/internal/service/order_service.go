@@ -35,6 +35,7 @@ type OrderService interface {
 	UpdateOrderStatus(ctx context.Context, id string, status string) error
 	CancelOrder(ctx context.Context, userID string, orderID string) error
 	ExpireOrder(ctx context.Context, id string) error
+	SweepExpiredOrders(ctx context.Context) error
 }
 
 type orderService struct {
@@ -71,6 +72,23 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 		}
 	}
 
+	var successfullyDeductedItems []entities.OrderItem
+	var successfullyReservedRedisItems []entities.OrderItem
+	success := false
+
+	defer func() {
+		if !success {
+			for _, item := range successfullyReservedRedisItems {
+				if s.inventoryService != nil {
+					_ = s.inventoryService.RestoreStock(context.Background(), item.ProductID, item.Quantity)
+				}
+			}
+			for _, item := range successfullyDeductedItems {
+				_ = s.productRepository.UpdateStock(context.Background(), item.ProductID, item.Quantity, -item.Quantity)
+			}
+		}
+	}()
+
 	var createdOrders []entities.OrderResponse
 	// Core order creation logic, called within or without a transaction.
 	coreLogic := func(opCtx context.Context, repo repository.OrderRepository) error {
@@ -95,6 +113,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 				if err := s.productRepository.UpdateStock(opCtx, item.ProductID, -item.Quantity, item.Quantity); err != nil {
 					return res.WrapError(err, "Failed to update stock in DB", erres.CommonInternal)
 				}
+				successfullyDeductedItems = append(successfullyDeductedItems, entities.OrderItem{ProductID: item.ProductID, Quantity: item.Quantity})
 			} else {
 				if s.inventoryService != nil {
 					ok, err := s.inventoryService.ReserveStock(opCtx, item.ProductID, item.Quantity)
@@ -107,6 +126,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 								StatusCode: http.StatusBadRequest,
 							}
 						}
+						successfullyDeductedItems = append(successfullyDeductedItems, entities.OrderItem{ProductID: item.ProductID, Quantity: item.Quantity})
 					} else if !ok {
 						return &res.AppError{
 							Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
@@ -114,11 +134,13 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 							StatusCode: http.StatusBadRequest,
 						}
 					} else {
+						successfullyReservedRedisItems = append(successfullyReservedRedisItems, entities.OrderItem{ProductID: item.ProductID, Quantity: item.Quantity})
 						// Reserved in Redis successfully, now deduct in MongoDB
 						if dbErr := s.productRepository.DeductStock(opCtx, item.ProductID, item.Quantity); dbErr != nil {
 							_ = s.inventoryService.RestoreStock(context.Background(), item.ProductID, item.Quantity)
 							return res.WrapError(dbErr, "Failed to deduct stock in DB", erres.CommonInternal)
 						}
+						successfullyDeductedItems = append(successfullyDeductedItems, entities.OrderItem{ProductID: item.ProductID, Quantity: item.Quantity})
 					}
 				} else {
 					if err := s.productRepository.DeductStock(opCtx, item.ProductID, item.Quantity); err != nil {
@@ -128,6 +150,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 							StatusCode: http.StatusBadRequest,
 						}
 					}
+					successfullyDeductedItems = append(successfullyDeductedItems, entities.OrderItem{ProductID: item.ProductID, Quantity: item.Quantity})
 				}
 			}
 
@@ -274,6 +297,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req entit
 		}
 	}
 
+	success = true
 	return createdOrders, nil
 }
 
@@ -521,6 +545,23 @@ func (s *orderService) CancelOrder(ctx context.Context, userID string, orderID s
 	return s.cancelOrderAtomic(ctx, order)
 }
 
+func (s *orderService) SweepExpiredOrders(ctx context.Context) error {
+	orders, err := s.orderRepository.GetExpiredPendingOrders(ctx)
+	if err != nil {
+		return res.WrapError(err, "Failed to get expired pending orders", erres.CommonInternal)
+	}
+
+	for _, order := range orders {
+		if err := s.ExpireOrder(ctx, order.ID); err != nil {
+			logs.WithContext(ctx).Error("failed to expire order during sweep", "order_id", order.ID, "error", err)
+			continue
+		}
+		logs.WithContext(ctx).Info("successfully swept expired order", "order_id", order.ID)
+	}
+
+	return nil
+}
+
 //nolint:gocyclo
 func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID string, req entities.CheckoutRequest) ([]entities.OrderResponse, error) {
 	if len(req.Items) == 0 {
@@ -533,6 +574,23 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 
 	var createdOrders []entities.OrderResponse
 	var productIDsToClearFromCart []string
+	
+	var successfullyDeductedItems []entities.OrderItem
+	var successfullyReservedRedisItems []entities.OrderItem
+	success := false
+
+	defer func() {
+		if !success {
+			for _, item := range successfullyReservedRedisItems {
+				if s.inventoryService != nil {
+					_ = s.inventoryService.RestoreStock(context.Background(), item.ProductID, item.Quantity)
+				}
+			}
+			for _, item := range successfullyDeductedItems {
+				_ = s.productRepository.UpdateStock(context.Background(), item.ProductID, item.Quantity, -item.Quantity)
+			}
+		}
+	}()
 
 	// Core order creation logic, called within or without a transaction.
 	coreLogic := func(opCtx context.Context, repo repository.OrderRepository) error {
@@ -568,6 +626,7 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 				if err := s.productRepository.UpdateStock(opCtx, item.ProductID, -item.Quantity, item.Quantity); err != nil {
 					return res.WrapError(err, "Failed to update stock in DB", erres.CommonInternal)
 				}
+				successfullyDeductedItems = append(successfullyDeductedItems, entities.OrderItem{ProductID: item.ProductID, Quantity: item.Quantity})
 			} else {
 				if s.inventoryService != nil {
 					ok, err := s.inventoryService.ReserveStock(opCtx, item.ProductID, item.Quantity)
@@ -580,6 +639,7 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 								StatusCode: http.StatusBadRequest,
 							}
 						}
+						successfullyDeductedItems = append(successfullyDeductedItems, entities.OrderItem{ProductID: item.ProductID, Quantity: item.Quantity})
 					} else if !ok {
 						return &res.AppError{
 							Message:    fmt.Sprintf("Not enough stock for product %s", product.Name),
@@ -587,11 +647,13 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 							StatusCode: http.StatusBadRequest,
 						}
 					} else {
+						successfullyReservedRedisItems = append(successfullyReservedRedisItems, entities.OrderItem{ProductID: item.ProductID, Quantity: item.Quantity})
 						// Reserved in Redis successfully, now deduct in MongoDB
 						if dbErr := s.productRepository.DeductStock(opCtx, item.ProductID, item.Quantity); dbErr != nil {
 							_ = s.inventoryService.RestoreStock(context.Background(), item.ProductID, item.Quantity)
 							return res.WrapError(dbErr, "Failed to deduct stock in DB", erres.CommonInternal)
 						}
+						successfullyDeductedItems = append(successfullyDeductedItems, entities.OrderItem{ProductID: item.ProductID, Quantity: item.Quantity})
 					}
 				} else {
 					if err := s.productRepository.DeductStock(opCtx, item.ProductID, item.Quantity); err != nil {
@@ -601,6 +663,7 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 							StatusCode: http.StatusBadRequest,
 						}
 					}
+					successfullyDeductedItems = append(successfullyDeductedItems, entities.OrderItem{ProductID: item.ProductID, Quantity: item.Quantity})
 				}
 			}
 
@@ -758,5 +821,6 @@ func (s *orderService) CreateOrderFromCheckout(ctx context.Context, userID strin
 		}
 	}
 
+	success = true
 	return createdOrders, nil
 }

@@ -57,7 +57,6 @@ SET payment_status = $2,
     updated_at = NOW()
 WHERE invoice_number = $1 
   AND payment_status = 'unpaid' 
-  AND status != 'cancelled'
   AND is_deleted = false;
 
 -- name: UpdateOrderStatusAtomic :execrows
@@ -69,3 +68,12 @@ WHERE uuid = $1 AND status = $2 AND is_deleted = false;
 UPDATE orders
 SET inventory_returned = true, updated_at = NOW()
 WHERE uuid = $1 AND inventory_returned = false;
+
+-- name: GetExpiredPendingOrders :many
+SELECT * FROM orders
+WHERE status = 'pending' 
+  AND payment_status = 'unpaid' 
+  AND expires_at < NOW() 
+  AND is_deleted = false
+ORDER BY created_at ASC
+LIMIT 100;

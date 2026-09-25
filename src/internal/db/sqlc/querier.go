@@ -21,6 +21,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	CreateUserProfile(ctx context.Context, arg CreateUserProfileParams) error
 	GetAllRolePermissions(ctx context.Context) ([]GetAllRolePermissionsRow, error)
+	GetExpiredPendingOrders(ctx context.Context) ([]Order, error)
 	GetOrderByInvoiceNumber(ctx context.Context, invoiceNumber string) (GetOrderByInvoiceNumberRow, error)
 	GetOrderByUUID(ctx context.Context, argUuid uuid.UUID) (GetOrderByUUIDRow, error)
 	GetOrderItemsByOrderID(ctx context.Context, orderID int64) ([]OrderItem, error)
