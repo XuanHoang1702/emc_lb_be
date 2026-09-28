@@ -21,6 +21,7 @@ func (r *ProductRoute) RegisterPublic(router gin.IRouter) {
 		productRoute.GET("", r.productHandler.HandleList)
 		productRoute.GET("/:id", r.productHandler.HandleGetByID)
 	}
+	router.GET("/search/products", r.productHandler.HandleSearch)
 }
 
 func (r *ProductRoute) RegisterProtected(router gin.IRouter) {
@@ -30,4 +31,5 @@ func (r *ProductRoute) RegisterProtected(router gin.IRouter) {
 		productRoute.PATCH("/:id", middleware.RequirePermission("product:update"), r.productHandler.HandleUpdate)
 		productRoute.DELETE("/:id", middleware.RequirePermission("product:delete"), r.productHandler.HandleDelete)
 	}
+	router.POST("/search/sync", middleware.RequirePermission("product:create"), r.productHandler.HandleSync)
 }

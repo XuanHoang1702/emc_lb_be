@@ -6,45 +6,61 @@ import (
 	"github.com/google/uuid"
 )
 
+// ============================================================
+// User & UserProfile Entities
+// ============================================================
+
 type User struct {
-	ID                  uuid.UUID
+	ID                  int64
+	UUID                uuid.UUID
 	Email               string
-	Phone               *string
-	FullName            *string
-	UserName            string
 	PasswordHash        string
 	PasswordChangedAt   time.Time
+	SessionVersion      int32
 	EmailVerified       bool
 	EmailVerifiedAt     time.Time
-	PhoneVerified       bool
-	PhoneVerifiedAt     time.Time
-	AvatarURL           *string
-	Gender              *string
-	BirthDate           time.Time
 	Status              string
 	IsBanned            bool
 	BannedReason        *string
 	Role                string
-	TotalOrders         int32
-	TotalSpent          float64
-	RewardPoints        int64
 	LastLoginAt         time.Time
 	LastLoginIP         *string
 	FailedLoginAttempts int32
 	LockedUntil         time.Time
-	LanguageCode        *string
-	Timezone            *string
 	IsDeleted           bool
 	DeletedAt           time.Time
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
 
+type UserProfile struct {
+	UserID          int64
+	UserName        string
+	FullName        *string
+	Phone           *string
+	PhoneVerified   bool
+	PhoneVerifiedAt time.Time
+	AvatarURL       *string
+	Gender          *string
+	BirthDate       time.Time
+	LanguageCode    *string
+	Timezone        *string
+	TotalOrders     int32
+	TotalSpent      float64
+	RewardPoints    int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// ============================================================
+// Auth: Register
+// ============================================================
+
 type RegisterUserRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
-	UserName string `json:"user_name" binding:"required"`
-	Phone    string `json:"phone"`
+	Email    string `json:"email" binding:"required,email,max=254"`
+	Password string `json:"password" binding:"required,min=8,password_strong"`
+	UserName string `json:"user_name" binding:"required,min=3,max=254,regex=^[a-zA-Z0-9_]*$"`
+	Phone    string `json:"phone" binding:"omitempty,min=10,max=15"`
 }
 
 type RegisterUserResponse struct {
@@ -55,9 +71,14 @@ type RegisterUserResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ============================================================
+// Auth: Login / Token / Logout
+// ============================================================
+
 type LoginUserRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
+	ClientIP string `json:"-"`
 }
 
 type LoginUserResponse struct {
@@ -75,14 +96,18 @@ type LogoutUserRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
+// ============================================================
+// Verification
+// ============================================================
+
 type VerifyEmailOTPRequest struct {
 	Email string `json:"email" binding:"required,email"`
 	OTP   string `json:"otp" binding:"required,len=6"`
 }
 
-type DeleteUserRequest struct {
-	Email string `json:"email" binding:"required,email"`
-}
+// ============================================================
+// Avatar
+// ============================================================
 
 type UpsertAvatarRequest struct {
 	UserID      string
@@ -93,4 +118,48 @@ type UpsertAvatarRequest struct {
 
 type UpsertAvatarResponse struct {
 	AvatarURL string `json:"avatar_url"`
+}
+
+// ============================================================
+// Profile
+// ============================================================
+
+type ProfileData struct {
+	UserName  string `json:"user_name,omitempty"`
+	FullName  string `json:"full_name,omitempty"`
+	Phone     string `json:"phone,omitempty"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+}
+
+type UserProfileResponse struct {
+	ID            uuid.UUID   `json:"id"`
+	Email         string      `json:"email"`
+	Role          string      `json:"role"`
+	Status        string      `json:"status"`
+	EmailVerified bool        `json:"email_verified"`
+	Profile       ProfileData `json:"profile"`
+	CreatedAt     time.Time   `json:"created_at"`
+}
+
+// ============================================================
+// Password Management
+// ============================================================
+
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8,password_strong"`
+}
+
+type AdminChangePasswordRequest struct {
+	NewPassword string `json:"new_password" binding:"required,min=8,password_strong"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type ResetPasswordRequest struct {
+	Email       string `json:"email" binding:"required,email"`
+	OTP         string `json:"otp" binding:"required,len=6"`
+	NewPassword string `json:"new_password" binding:"required,min=8,password_strong"`
 }

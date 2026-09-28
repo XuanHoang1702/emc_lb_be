@@ -2,11 +2,16 @@ package service
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"net/http"
+	"net/netip"
 	"time"
 
+	"emc_lb/src/internal/db/sqlc"
+
 	"emc_lb/src/internal/repository"
+	"emc_lb/src/pkg/auth"
 	"emc_lb/src/pkg/cache"
 	"emc_lb/src/pkg/config"
 	"emc_lb/src/pkg/entities"
@@ -20,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -27,14 +33,20 @@ type UserService interface {
 	Register(context.Context, entities.RegisterUserRequest) (entities.RegisterUserResponse, error)
 	Login(context.Context, entities.LoginUserRequest) (entities.LoginUserResponse, error)
 	RefreshToken(context.Context, entities.RefreshTokenRequest) (entities.LoginUserResponse, error)
-	Logout(context.Context, entities.LogoutUserRequest) error
+	Logout(context.Context, string, entities.LogoutUserRequest) error
 	VerifyEmailOTP(context.Context, entities.VerifyEmailOTPRequest) error
-	Delete(context.Context, entities.DeleteUserRequest) error
+	Delete(context.Context, uuid.UUID) error
 	UpsertAvatar(context.Context, entities.UpsertAvatarRequest) (entities.UpsertAvatarResponse, error)
+	GetProfile(context.Context, uuid.UUID) (entities.UserProfileResponse, error)
+	ChangePassword(context.Context, uuid.UUID, entities.ChangePasswordRequest) error
+	AdminChangePassword(context.Context, string, uuid.UUID, entities.AdminChangePasswordRequest) error
+	ForgotPassword(context.Context, entities.ForgotPasswordRequest) error
+	ResetPassword(context.Context, entities.ResetPasswordRequest) error
 }
 
 type userService struct {
 	cfg               *config.AppConfig
+	pool              *pgxpool.Pool
 	userRepository    repository.UserRepository
 	refreshTokenStore cache.RefreshTokenStore
 	emailOTPStore     cache.EmailOTPStore
@@ -42,9 +54,10 @@ type userService struct {
 	avatarStorage     storage.AvatarStorage
 }
 
-func NewUserService(cfg *config.AppConfig, userRepository repository.UserRepository, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) UserService {
+func NewUserService(cfg *config.AppConfig, pool *pgxpool.Pool, userRepository repository.UserRepository, refreshTokenStore cache.RefreshTokenStore, emailOTPStore cache.EmailOTPStore, taskDistributor worker.TaskDistributor, avatarStorage storage.AvatarStorage) UserService {
 	return &userService{
 		cfg:               cfg,
+		pool:              pool,
 		userRepository:    userRepository,
 		refreshTokenStore: refreshTokenStore,
 		emailOTPStore:     emailOTPStore,
@@ -70,18 +83,33 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 			StatusCode: http.StatusConflict,
 		}
 	}
-	// if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-	// 	return entities.RegisterUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
-	// }
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return entities.RegisterUserResponse{}, res.WrapError(err, "Cannot check email availability", erres.CommonInternal)
+	}
 
 	passwordHash, err := utils.HashPassword(normalizedRequest.Password, s.cfg.App.SystemSecret)
 	if err != nil {
 		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not create account now", erres.CommonInternal)
 	}
 
-	userEntity := mapping.ToUserEntity(normalizedRequest, passwordHash)
-	data, err := s.userRepository.Create(ctx, userEntity)
+	userEntity, userProfile := mapping.ToUserEntity(normalizedRequest, passwordHash)
+
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
+		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not start transaction now", erres.CommonInternal)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	repoTx := s.userRepository.WithTx(tx)
+
+	data, err := repoTx.Create(ctx, userEntity, userProfile)
+	if err != nil {
+		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not create account now", erres.UserCreateFailed)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return entities.RegisterUserResponse{}, res.WrapError(err, "Can not create account now", erres.UserCreateFailed)
 	}
 
@@ -109,7 +137,7 @@ func (s *userService) Register(ctx context.Context, req entities.RegisterUserReq
 		})
 	}
 
-	return mapping.ToRegisterUserResponse(data), nil
+	return mapping.ToRegisterUserResponse(data, userProfile), nil
 }
 
 func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) (entities.LoginUserResponse, error) {
@@ -130,7 +158,38 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not get account now", erres.UserGetFailed)
 	}
 
+	if user.IsBanned {
+		return entities.LoginUserResponse{}, &res.AppError{
+			Message:    "Account is banned",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusForbidden,
+		}
+	}
+
+	if user.Status != "active" {
+		return entities.LoginUserResponse{}, &res.AppError{
+			Message:    "Account is inactive",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusForbidden,
+		}
+	}
+
+	if time.Now().Before(user.LockedUntil) {
+		return entities.LoginUserResponse{}, &res.AppError{
+			Message:    "Account is temporarily locked. Please try again later.",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusLocked,
+		}
+	}
+
 	if err = utils.CheckPassword(normalizedRequest.Password, user.PasswordHash, s.cfg.App.SystemSecret); err != nil {
+		_ = s.userRepository.UpdateFailedLoginAttempts(ctx, user.ID)
+		if user.FailedLoginAttempts+1 >= 5 {
+			_ = s.userRepository.LockUserAccount(ctx, sqlc.LockUserAccountParams{
+				ID:          user.ID,
+				LockedUntil: time.Now().Add(15 * time.Minute),
+			})
+		}
 		return entities.LoginUserResponse{}, &res.AppError{
 			Message:    "Invalid email or password",
 			Code:       erres.UserUnauthorized,
@@ -146,14 +205,28 @@ func (s *userService) Login(ctx context.Context, req entities.LoginUserRequest) 
 		}
 	}
 
-	tokenPair, err := utils.GenerateTokenPair(user.ID.String(), user.Role, s.cfg.JWT)
+	var lastLoginIPStr *string
+	if req.ClientIP != "" {
+		if _, err := netip.ParseAddr(req.ClientIP); err == nil {
+			lastLoginIPStr = &req.ClientIP
+		}
+	}
+	_ = s.userRepository.UpdateUserLoginStats(ctx, sqlc.UpdateUserLoginStatsParams{
+		ID:          user.ID,
+		LastLoginIp: lastLoginIPStr,
+	})
+
+	tokenPair, err := utils.GenerateTokenPair(user.UUID.String(), user.Role, s.cfg.JWT)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not login now", erres.CommonInternal)
 	}
 
 	if err := s.refreshTokenStore.Save(
 		ctx,
-		user.ID.String(),
+		cache.SessionData{
+			UserID:         user.UUID.String(),
+			SessionVersion: user.SessionVersion,
+		},
 		tokenPair.RefreshToken,
 		time.Until(tokenPair.RefreshTokenExpiresAt),
 	); err != nil {
@@ -172,7 +245,7 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 	normalizedRequest := req
 	utils.NormalizeStrings(&normalizedRequest.RefreshToken)
 
-	userID, err := s.refreshTokenStore.GetUserID(ctx, normalizedRequest.RefreshToken)
+	session, err := s.refreshTokenStore.GetSession(ctx, normalizedRequest.RefreshToken)
 	if err != nil {
 		return entities.LoginUserResponse{}, &res.AppError{
 			Message:    "Invalid refresh token",
@@ -181,17 +254,27 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 		}
 	}
 
-	uid, err := uuid.Parse(userID)
+	uid, err := uuid.Parse(session.UserID)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Invalid user ID in refresh token", erres.CommonInternal)
 	}
 
-	user, err := s.userRepository.GetByID(ctx, uid)
+	user, err := s.userRepository.GetByUUID(ctx, uid)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
 	}
 
-	tokenPair, err := utils.GenerateTokenPair(userID, user.Role, s.cfg.JWT)
+	if session.SessionVersion != user.SessionVersion {
+		// Session was invalidated (e.g. by password change)
+		_ = s.refreshTokenStore.Delete(ctx, normalizedRequest.RefreshToken)
+		return entities.LoginUserResponse{}, &res.AppError{
+			Message:    "Session expired, please login again",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		}
+	}
+
+	tokenPair, err := utils.GenerateTokenPair(session.UserID, user.Role, s.cfg.JWT)
 	if err != nil {
 		return entities.LoginUserResponse{}, res.WrapError(err, "Can not refresh token now", erres.CommonInternal)
 	}
@@ -202,7 +285,10 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 
 	if err := s.refreshTokenStore.Save(
 		ctx,
-		userID,
+		cache.SessionData{
+			UserID:         session.UserID,
+			SessionVersion: user.SessionVersion,
+		},
 		tokenPair.RefreshToken,
 		time.Until(tokenPair.RefreshTokenExpiresAt),
 	); err != nil {
@@ -217,15 +303,25 @@ func (s *userService) RefreshToken(ctx context.Context, req entities.RefreshToke
 	}, nil
 }
 
-func (s *userService) Logout(ctx context.Context, req entities.LogoutUserRequest) error {
+func (s *userService) Logout(ctx context.Context, callerUserID string, req entities.LogoutUserRequest) error {
 	normalizedRequest := req
 	utils.NormalizeStrings(&normalizedRequest.RefreshToken)
 
-	if _, err := s.refreshTokenStore.GetUserID(ctx, normalizedRequest.RefreshToken); err != nil {
+	session, err := s.refreshTokenStore.GetSession(ctx, normalizedRequest.RefreshToken)
+	if err != nil {
 		return &res.AppError{
 			Message:    "Invalid refresh token",
 			Code:       erres.UserUnauthorized,
 			StatusCode: http.StatusUnauthorized,
+		}
+	}
+
+	// Verify token ownership: only the token owner can invalidate their own token.
+	if session.UserID != callerUserID {
+		return &res.AppError{
+			Message:    "Refresh token does not belong to the current user",
+			Code:       erres.CommonForbidden,
+			StatusCode: http.StatusForbidden,
 		}
 	}
 
@@ -254,7 +350,7 @@ func (s *userService) VerifyEmailOTP(ctx context.Context, req entities.VerifyEma
 		return res.WrapError(err, "Can not verify email now", erres.CommonInternal)
 	}
 
-	if savedOTP != normalizedRequest.OTP {
+	if subtle.ConstantTimeCompare([]byte(savedOTP), []byte(normalizedRequest.OTP)) != 1 {
 		return &res.AppError{
 			Message:    "Invalid or expired otp",
 			Code:       erres.UserUnauthorized,
@@ -273,11 +369,8 @@ func (s *userService) VerifyEmailOTP(ctx context.Context, req entities.VerifyEma
 	return nil
 }
 
-func (s *userService) Delete(ctx context.Context, req entities.DeleteUserRequest) error {
-	normalizedRequest := req
-	utils.NormalizeEmail(&normalizedRequest.Email)
-
-	if _, err := s.userRepository.GetByEmail(ctx, normalizedRequest.Email); err != nil {
+func (s *userService) Delete(ctx context.Context, userID uuid.UUID) error {
+	if _, err := s.userRepository.GetByUUID(ctx, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return &res.AppError{
 				Message:    "User not found",
@@ -289,7 +382,7 @@ func (s *userService) Delete(ctx context.Context, req entities.DeleteUserRequest
 		return res.WrapError(err, "Can not get account now", erres.UserGetFailed)
 	}
 
-	if err := s.userRepository.SoftDeleteByEmail(ctx, normalizedRequest.Email); err != nil {
+	if err := s.userRepository.SoftDeleteByUUID(ctx, userID); err != nil {
 		return res.WrapError(err, "Can not delete account now", erres.UserUpdateFailed)
 	}
 
@@ -317,7 +410,7 @@ func (s *userService) UpsertAvatar(ctx context.Context, req entities.UpsertAvata
 		}
 	}
 
-	if _, err = s.userRepository.GetIDByID(ctx, userID); err != nil {
+	if _, err = s.userRepository.GetIDByUUID(ctx, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return entities.UpsertAvatarResponse{}, &res.AppError{
 				Message:    "User not found",
@@ -365,11 +458,236 @@ func (s *userService) UpsertAvatar(ctx context.Context, req entities.UpsertAvata
 		return entities.UpsertAvatarResponse{}, res.WrapError(err, "Can not upload avatar now", erres.CommonInternal)
 	}
 
-	if err := s.userRepository.UpdateAvatarByID(ctx, userID, avatarURL); err != nil {
+	if err := s.userRepository.UpdateAvatarByUUID(ctx, userID, avatarURL); err != nil {
 		return entities.UpsertAvatarResponse{}, res.WrapError(err, "Can not update avatar now", erres.UserUpdateFailed)
 	}
 
 	return entities.UpsertAvatarResponse{
 		AvatarURL: avatarURL,
 	}, nil
+}
+
+func (s *userService) GetProfile(ctx context.Context, userID uuid.UUID) (entities.UserProfileResponse, error) {
+	row, err := s.userRepository.GetUserProfileByUUID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return entities.UserProfileResponse{}, &res.AppError{
+				Message:    "User not found",
+				Code:       erres.UserNotFound,
+				StatusCode: http.StatusNotFound,
+			}
+		}
+		return entities.UserProfileResponse{}, res.WrapError(err, "Can not get profile now", erres.UserGetFailed)
+	}
+
+	var avatarURL string
+	if row.AvatarUrl != nil {
+		avatarURL = *row.AvatarUrl
+	}
+
+	var phone string
+	if row.Phone != nil {
+		phone = *row.Phone
+	}
+
+	var fullName string
+	if row.FullName != nil {
+		fullName = *row.FullName
+	}
+
+	var userName string
+	if row.UserName != nil {
+		userName = *row.UserName
+	}
+
+	return entities.UserProfileResponse{
+		ID:            row.Uuid,
+		Email:         row.Email,
+		Role:          row.Role,
+		Status:        row.Status,
+		EmailVerified: row.EmailVerified,
+		CreatedAt:     row.CreatedAt,
+		Profile: entities.ProfileData{
+			UserName:  userName,
+			FullName:  fullName,
+			Phone:     phone,
+			AvatarURL: avatarURL,
+		},
+	}, nil
+}
+
+func (s *userService) ChangePassword(ctx context.Context, userID uuid.UUID, req entities.ChangePasswordRequest) error {
+	normalizedRequest := req
+	utils.NormalizeStrings(&normalizedRequest.OldPassword, &normalizedRequest.NewPassword)
+
+	user, err := s.userRepository.GetByUUID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &res.AppError{
+				Message:    "User not found",
+				Code:       erres.UserNotFound,
+				StatusCode: http.StatusNotFound,
+			}
+		}
+		return res.WrapError(err, "Can not change password now", erres.UserGetFailed)
+	}
+
+	if err = utils.CheckPassword(normalizedRequest.OldPassword, user.PasswordHash, s.cfg.App.SystemSecret); err != nil {
+		return &res.AppError{
+			Message:    "Invalid old password",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
+	newPasswordHash, err := utils.HashPassword(normalizedRequest.NewPassword, s.cfg.App.SystemSecret)
+	if err != nil {
+		return res.WrapError(err, "Can not change password now", erres.CommonInternal)
+	}
+
+	if err := s.userRepository.UpdatePassword(ctx, sqlc.UpdateUserPasswordParams{
+		ID:           user.ID,
+		PasswordHash: newPasswordHash,
+	}); err != nil {
+		return res.WrapError(err, "Can not change password now", erres.UserUpdateFailed)
+	}
+
+	// Tokens are inherently invalidated via session_version DB increment, no need to aggressively delete from Redis.
+	return nil
+}
+
+func (s *userService) AdminChangePassword(ctx context.Context, callerRole string, targetUserUUID uuid.UUID, req entities.AdminChangePasswordRequest) error {
+	normalizedRequest := req
+	utils.NormalizeStrings(&normalizedRequest.NewPassword)
+
+	user, err := s.userRepository.GetByUUID(ctx, targetUserUUID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &res.AppError{
+				Message:    "User not found",
+				Code:       erres.UserNotFound,
+				StatusCode: http.StatusNotFound,
+			}
+		}
+		return res.WrapError(err, "Can not change password now", erres.UserGetFailed)
+	}
+
+	if !auth.CanManageUser(callerRole, user.Role) {
+		return &res.AppError{
+			Message:    "You do not have permission to manage this user's password",
+			Code:       erres.CommonForbidden,
+			StatusCode: http.StatusForbidden,
+		}
+	}
+
+	newPasswordHash, err := utils.HashPassword(normalizedRequest.NewPassword, s.cfg.App.SystemSecret)
+	if err != nil {
+		return res.WrapError(err, "Can not change password now", erres.CommonInternal)
+	}
+
+	if err := s.userRepository.UpdatePassword(ctx, sqlc.UpdateUserPasswordParams{
+		ID:           user.ID,
+		PasswordHash: newPasswordHash,
+	}); err != nil {
+		return res.WrapError(err, "Can not change password now", erres.UserUpdateFailed)
+	}
+
+	// Tokens are inherently invalidated via session_version DB increment, no need to aggressively delete from Redis.
+	return nil
+}
+
+func (s *userService) ForgotPassword(ctx context.Context, req entities.ForgotPasswordRequest) error {
+	normalizedRequest := req
+	utils.NormalizeEmail(&normalizedRequest.Email)
+
+	user, err := s.userRepository.GetByEmail(ctx, normalizedRequest.Email)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Do not leak if user exists
+			return nil
+		}
+		return res.WrapError(err, "Can not process forgot password now", erres.UserGetFailed)
+	}
+
+	otp, err := utils.GenerateOTP(6)
+	if err != nil {
+		return res.WrapError(err, "Can not generate OTP now", erres.CommonInternal)
+	}
+
+	otpTTL := utils.GetDurationFromEnv("EMAIL_OTP_TTL", 10*time.Minute)
+	// We prefix the email so it doesn't conflict with registration OTP
+	resetKey := "pwd_reset:" + normalizedRequest.Email
+	if err := s.emailOTPStore.Save(ctx, resetKey, otp, otpTTL); err != nil {
+		return res.WrapError(err, "Can not save OTP now", erres.CommonInternal)
+	}
+
+	profile, _ := s.userRepository.GetUserProfileByUUID(ctx, user.UUID)
+	userName := normalizedRequest.Email
+	if profile.UserName != nil {
+		userName = *profile.UserName
+	}
+
+	payload := &worker.PayloadSendPasswordResetEmail{
+		Email:    normalizedRequest.Email,
+		UserName: userName,
+		OTP:      otp,
+		TTL:      int(otpTTL.Minutes()),
+	}
+
+	if err := s.taskDistributor.DistributeTaskSendPasswordResetEmail(ctx, payload); err != nil {
+		logs.LogError("worker", "enqueue_password_reset_email_task_failed", err, map[string]any{
+			"email": normalizedRequest.Email,
+		})
+	}
+
+	return nil
+}
+
+func (s *userService) ResetPassword(ctx context.Context, req entities.ResetPasswordRequest) error {
+	normalizedRequest := req
+	utils.NormalizeEmail(&normalizedRequest.Email)
+	utils.NormalizeStrings(&normalizedRequest.OTP, &normalizedRequest.NewPassword)
+
+	resetKey := "pwd_reset:" + normalizedRequest.Email
+	savedOTP, err := s.emailOTPStore.Get(ctx, resetKey)
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return &res.AppError{
+				Message:    "Invalid or expired otp",
+				Code:       erres.UserUnauthorized,
+				StatusCode: http.StatusUnauthorized,
+			}
+		}
+		return res.WrapError(err, "Can not verify OTP now", erres.CommonInternal)
+	}
+
+	if subtle.ConstantTimeCompare([]byte(savedOTP), []byte(normalizedRequest.OTP)) != 1 {
+		return &res.AppError{
+			Message:    "Invalid or expired otp",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		}
+	}
+
+	user, err := s.userRepository.GetByEmail(ctx, normalizedRequest.Email)
+	if err != nil {
+		return res.WrapError(err, "Can not get user account", erres.UserGetFailed)
+	}
+
+	newPasswordHash, err := utils.HashPassword(normalizedRequest.NewPassword, s.cfg.App.SystemSecret)
+	if err != nil {
+		return res.WrapError(err, "Can not reset password now", erres.CommonInternal)
+	}
+
+	if err := s.userRepository.UpdatePassword(ctx, sqlc.UpdateUserPasswordParams{
+		ID:           user.ID,
+		PasswordHash: newPasswordHash,
+	}); err != nil {
+		return res.WrapError(err, "Can not reset password now", erres.UserUpdateFailed)
+	}
+
+	_ = s.emailOTPStore.Delete(ctx, resetKey)
+
+	// Tokens are inherently invalidated via session_version DB increment, no need to aggressively delete from Redis.
+	return nil
 }

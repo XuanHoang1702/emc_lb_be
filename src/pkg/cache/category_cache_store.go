@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"emc_lb/src/pkg/entities"
@@ -11,19 +10,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const (
-	categoryListKey    = "cache:categories:list"
-	categoryItemPrefix = "cache:category:"
-	categoryCacheTTL   = 30 * time.Minute
-)
+const categoryListKey = "cache:category:list"
 
 type CategoryCacheStore interface {
-	GetAll(ctx context.Context) ([]entities.CategoryResponse, error)
-	SetAll(ctx context.Context, categories []entities.CategoryResponse) error
-	GetByID(ctx context.Context, id string) (entities.CategoryResponse, error)
-	SetByID(ctx context.Context, id string, category entities.CategoryResponse) error
-	Invalidate(ctx context.Context, id string) error
-	InvalidateAll(ctx context.Context) error
+	GetList(ctx context.Context) ([]entities.CategoryResponse, error)
+	SetList(ctx context.Context, categories []entities.CategoryResponse) error
+	InvalidateList(ctx context.Context) error
 }
 
 type RedisCategoryCacheStore struct {
@@ -31,79 +23,56 @@ type RedisCategoryCacheStore struct {
 	ttl    time.Duration
 }
 
-func NewRedisCategoryCacheStore(client *redis.Client) CategoryCacheStore {
-	return &RedisCategoryCacheStore{client: client, ttl: categoryCacheTTL}
+func NewRedisCategoryCacheStore(client *redis.Client, ttl time.Duration) CategoryCacheStore {
+	return &RedisCategoryCacheStore{client: client, ttl: ttl}
 }
 
-func (s *RedisCategoryCacheStore) GetAll(ctx context.Context) ([]entities.CategoryResponse, error) {
+func (s *RedisCategoryCacheStore) GetList(ctx context.Context) ([]entities.CategoryResponse, error) {
+	start := time.Now()
 	data, err := s.client.Get(ctx, categoryListKey).Bytes()
 	if err != nil {
+		if err == redis.Nil {
+			CacheMissesTotal.WithLabelValues("category").Inc()
+		} else {
+			CacheGetErrorsTotal.WithLabelValues("category").Inc()
+		}
 		return nil, err
 	}
 
 	var categories []entities.CategoryResponse
 	if err := json.Unmarshal(data, &categories); err != nil {
+		CacheGetErrorsTotal.WithLabelValues("category").Inc()
+		_ = s.client.Del(ctx, categoryListKey)
 		return nil, err
 	}
 
+	CacheHitsTotal.WithLabelValues("category").Inc()
+	CacheGetDuration.WithLabelValues("category").Observe(time.Since(start).Seconds())
 	return categories, nil
 }
 
-func (s *RedisCategoryCacheStore) SetAll(ctx context.Context, categories []entities.CategoryResponse) error {
+func (s *RedisCategoryCacheStore) SetList(ctx context.Context, categories []entities.CategoryResponse) error {
+	start := time.Now()
 	data, err := json.Marshal(categories)
 	if err != nil {
+		CacheSetErrorsTotal.WithLabelValues("category").Inc()
 		return err
 	}
 
-	return s.client.Set(ctx, categoryListKey, data, s.ttl).Err()
-}
-
-func (s *RedisCategoryCacheStore) GetByID(ctx context.Context, id string) (entities.CategoryResponse, error) {
-	data, err := s.client.Get(ctx, buildCategoryItemKey(id)).Bytes()
+	err = s.client.Set(ctx, categoryListKey, data, s.ttl).Err()
 	if err != nil {
-		return entities.CategoryResponse{}, err
-	}
-
-	var category entities.CategoryResponse
-	if err := json.Unmarshal(data, &category); err != nil {
-		return entities.CategoryResponse{}, err
-	}
-
-	return category, nil
-}
-
-func (s *RedisCategoryCacheStore) SetByID(ctx context.Context, id string, category entities.CategoryResponse) error {
-	data, err := json.Marshal(category)
-	if err != nil {
+		CacheSetErrorsTotal.WithLabelValues("category").Inc()
 		return err
 	}
-
-	return s.client.Set(ctx, buildCategoryItemKey(id), data, s.ttl).Err()
-}
-
-func (s *RedisCategoryCacheStore) Invalidate(ctx context.Context, id string) error {
-	return s.client.Del(ctx, buildCategoryItemKey(id), categoryListKey).Err()
-}
-
-func (s *RedisCategoryCacheStore) InvalidateAll(ctx context.Context) error {
-	iter := s.client.Scan(ctx, 0, categoryItemPrefix+"*", 100).Iterator()
-	var keys []string
-	for iter.Next(ctx) {
-		keys = append(keys, iter.Val())
-	}
-	if err := iter.Err(); err != nil {
-		return err
-	}
-
-	keys = append(keys, categoryListKey)
-
-	if len(keys) > 0 {
-		return s.client.Del(ctx, keys...).Err()
-	}
-
+	CacheSetDuration.WithLabelValues("category").Observe(time.Since(start).Seconds())
 	return nil
 }
 
-func buildCategoryItemKey(id string) string {
-	return fmt.Sprintf("%s%s", categoryItemPrefix, id)
+func (s *RedisCategoryCacheStore) InvalidateList(ctx context.Context) error {
+	err := s.client.Del(ctx, categoryListKey).Err()
+	if err != nil && err != redis.Nil {
+		return err
+	}
+	CacheInvalidationsTotal.WithLabelValues("category").Inc()
+	return nil
 }

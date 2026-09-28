@@ -12,6 +12,53 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type CustomerStat struct {
+	UserID       int64          `json:"user_id"`
+	TotalOrders  int32          `json:"total_orders"`
+	TotalSpent   pgtype.Numeric `json:"total_spent"`
+	RewardPoints int32          `json:"reward_points"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+}
+
+type Order struct {
+	ID                   int64          `json:"id"`
+	Uuid                 uuid.UUID      `json:"uuid"`
+	PaymentGroupID       *string        `json:"payment_group_id"`
+	ShopID               *string        `json:"shop_id"`
+	UserID               int64          `json:"user_id"`
+	InvoiceNumber        string         `json:"invoice_number"`
+	SubTotal             pgtype.Numeric `json:"sub_total"`
+	CouponCode           *string        `json:"coupon_code"`
+	DiscountAmount       pgtype.Numeric `json:"discount_amount"`
+	TaxAmount            pgtype.Numeric `json:"tax_amount"`
+	TotalAmount          pgtype.Numeric `json:"total_amount"`
+	Status               string         `json:"status"`
+	PaymentStatus        string         `json:"payment_status"`
+	PaymentMethod        *string        `json:"payment_method"`
+	PaymentTransactionID *string        `json:"payment_transaction_id"`
+	ShippingAddress      *string        `json:"shipping_address"`
+	ContactPhone         *string        `json:"contact_phone"`
+	IsDeleted            bool           `json:"is_deleted"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+	ExpiresAt            time.Time      `json:"expires_at"`
+	InventoryReturned    bool           `json:"inventory_returned"`
+}
+
+type OrderItem struct {
+	ID          int64          `json:"id"`
+	Uuid        uuid.UUID      `json:"uuid"`
+	OrderID     int64          `json:"order_id"`
+	ProductID   string         `json:"product_id"`
+	ProductName string         `json:"product_name"`
+	Sku         *string        `json:"sku"`
+	Thumbnail   *string        `json:"thumbnail"`
+	Quantity    int32          `json:"quantity"`
+	Price       pgtype.Numeric `json:"price"`
+	SubTotal    pgtype.Numeric `json:"sub_total"`
+}
+
 type Permission struct {
 	Code        string    `json:"code"`
 	Name        string    `json:"name"`
@@ -33,6 +80,45 @@ type RolePermission struct {
 }
 
 type User struct {
+	ID                  int64     `json:"id"`
+	Uuid                uuid.UUID `json:"uuid"`
+	Email               string    `json:"email"`
+	PasswordHash        string    `json:"password_hash"`
+	PasswordChangedAt   time.Time `json:"password_changed_at"`
+	EmailVerified       bool      `json:"email_verified"`
+	EmailVerifiedAt     time.Time `json:"email_verified_at"`
+	Status              string    `json:"status"`
+	IsBanned            bool      `json:"is_banned"`
+	BannedReason        *string   `json:"banned_reason"`
+	Role                string    `json:"role"`
+	LastLoginAt         time.Time `json:"last_login_at"`
+	LastLoginIp         *string   `json:"last_login_ip"`
+	FailedLoginAttempts int32     `json:"failed_login_attempts"`
+	LockedUntil         time.Time `json:"locked_until"`
+	IsDeleted           bool      `json:"is_deleted"`
+	DeletedAt           time.Time `json:"deleted_at"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+	SessionVersion      int32     `json:"session_version"`
+}
+
+type UserProfile struct {
+	UserID          int64     `json:"user_id"`
+	FullName        *string   `json:"full_name"`
+	UserName        *string   `json:"user_name"`
+	Phone           *string   `json:"phone"`
+	PhoneVerified   bool      `json:"phone_verified"`
+	PhoneVerifiedAt time.Time `json:"phone_verified_at"`
+	AvatarUrl       *string   `json:"avatar_url"`
+	Gender          *string   `json:"gender"`
+	BirthDate       time.Time `json:"birth_date"`
+	LanguageCode    *string   `json:"language_code"`
+	Timezone        *string   `json:"timezone"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type UsersOld struct {
 	ID                  uuid.UUID      `json:"id"`
 	Email               string         `json:"email"`
 	Phone               *string        `json:"phone"`

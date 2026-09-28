@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"emc_lb/src/pkg/config"
@@ -24,7 +25,7 @@ func NewMongoClientFromConfig(ctx context.Context, cfg *config.MongoSettings) (*
 
 	client, err := mongo.Connect(clientOpts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("connect mongo: %w", err)
 	}
 
 	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
@@ -34,7 +35,7 @@ func NewMongoClientFromConfig(ctx context.Context, cfg *config.MongoSettings) (*
 		disconnectCtx, disconnectCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer disconnectCancel()
 		_ = client.Disconnect(disconnectCtx)
-		return nil, err
+		return nil, fmt.Errorf("ping mongo %s: %w", cfg.Database, err)
 	}
 
 	return client, nil
@@ -43,25 +44,33 @@ func NewMongoClientFromConfig(ctx context.Context, cfg *config.MongoSettings) (*
 // NewMongoClient creates a MongoDB client using env vars directly (legacy fallback).
 // Prefer NewMongoClientFromConfig when AppConfig is available.
 func NewMongoClient(ctx context.Context) (*mongo.Client, error) {
+	uri, err := BuildMongoURI()
+	if err != nil {
+		return nil, err
+	}
 	cfg := &config.MongoSettings{
-		URI:      BuildMongoURI(),
+		URI:      uri,
 		Database: GetMongoDatabaseName(),
 	}
 	return NewMongoClientFromConfig(ctx, cfg)
 }
 
-func BuildMongoURI() string {
+// BuildMongoURI returns the MongoDB connection URI from environment variables.
+// It checks MONGO_URI first, then falls back to MONGO_INITDB_ROOT_URL.
+func BuildMongoURI() (string, error) {
 	if value := GetEnv("MONGO_URI", ""); value != "" {
-		return value
+		return value, nil
 	}
 
 	if value := GetEnv("MONGO_INITDB_ROOT_URL", ""); value != "" {
-		return value
+		return value, nil
 	}
 
-	return "mongodb://admin:admin@localhost:27017/?authSource=admin"
+	return "", fmt.Errorf("mongo: MONGO_URI or MONGO_INITDB_ROOT_URL environment variable is required")
 }
 
+// GetMongoDatabaseName returns the MongoDB database name from the MONGO_DB
+// environment variable, defaulting to "emc_lb".
 func GetMongoDatabaseName() string {
 	if value := GetEnv("MONGO_DB", ""); value != "" {
 		return value

@@ -34,6 +34,11 @@ func RequirePermission(permissionCode string) gin.HandlerFunc {
 			return
 		}
 
+		if roleStr == "admin" || roleStr == "superadmin" {
+			ctx.Next()
+			return
+		}
+
 		rbacManager := auth.GetRBACManager()
 		if !rbacManager.HasPermission(roleStr, permissionCode) {
 			res.Error(ctx, &res.AppError{

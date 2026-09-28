@@ -20,6 +20,7 @@ const (
 	ErrCodeForbidden           ErrorCode = "COMMON_FORBIDDEN"
 	ErrCodeTooManyRequests     ErrorCode = "COMMON_TOO_MANY_REQUESTS"
 	ErrCodeInvalidIdentityType ErrorCode = "COMMON_INVALID_IDENTITY_TYPE"
+	ErrCodeServiceUnavailable  ErrorCode = "COMMON_SERVICE_UNAVAILABLE"
 )
 
 type FieldError struct {
@@ -144,6 +145,8 @@ func httpStatusFromCode(code ErrorCode) int {
 		return http.StatusForbidden
 	case ErrCodeTooManyRequests:
 		return http.StatusTooManyRequests
+	case ErrCodeServiceUnavailable:
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
 	}

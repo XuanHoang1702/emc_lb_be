@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -41,7 +42,7 @@ func CapitalizeFirst(s string) string {
 
 func ToNumeric(v float64) pgtype.Numeric {
 	var n pgtype.Numeric
-	_ = n.Scan(v)
+	_ = n.Scan(fmt.Sprintf("%g", v))
 	return n
 }
 

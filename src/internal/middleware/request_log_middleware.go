@@ -59,8 +59,25 @@ func sanitizeRequestBody(body []byte) string {
 		return string(body)
 	}
 
-	if _, exists := payload["password"]; exists {
-		payload["password"] = "[REDACTED]"
+	// Redact any field that could contain credentials, tokens, or secrets.
+	sensitiveFields := []string{
+		"password",
+		"old_password",
+		"new_password",
+		"refresh_token",
+		"access_token",
+		"otp",
+		"secret_key",
+		"card_number",
+		"card_holder_name",
+		"card_expiry",
+		"cvv",
+	}
+
+	for _, field := range sensitiveFields {
+		if _, exists := payload[field]; exists {
+			payload[field] = "[REDACTED]"
+		}
 	}
 
 	sanitized, err := json.Marshal(payload)

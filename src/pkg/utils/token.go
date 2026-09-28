@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"strings"
 	"time"
 
 	"emc_lb/src/pkg/config"
@@ -118,6 +117,5 @@ func buildTokenSecret(secret string) []byte {
 func signTokenPayload(payload string, secret []byte) string {
 	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(payload))
-	signature := hex.EncodeToString(mac.Sum(nil))
-	return strings.ToLower(signature[:24])
+	return hex.EncodeToString(mac.Sum(nil))
 }

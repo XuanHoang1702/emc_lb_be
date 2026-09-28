@@ -15,6 +15,7 @@ type CartRepository interface {
 	GetByUserID(ctx context.Context, userID string) (entities.Cart, error)
 	Save(ctx context.Context, cart entities.Cart) (entities.Cart, error)
 	ClearCart(ctx context.Context, userID string) error
+	RemoveItems(ctx context.Context, userID string, productIDs []string) error
 	EnsureIndexes(ctx context.Context) error
 }
 
@@ -80,6 +81,15 @@ func (r *cartRepository) Save(ctx context.Context, cart entities.Cart) (entities
 
 func (r *cartRepository) ClearCart(ctx context.Context, userID string) error {
 	_, err := r.collection.DeleteOne(ctx, bson.M{"user_id": userID})
+	return err
+}
+
+func (r *cartRepository) RemoveItems(ctx context.Context, userID string, productIDs []string) error {
+	_, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"user_id": userID},
+		bson.M{"$pull": bson.M{"items": bson.M{"product_id": bson.M{"$in": productIDs}}}},
+	)
 	return err
 }
 

@@ -8,6 +8,7 @@ import (
 	route "emc_lb/src/internal/routes"
 	"emc_lb/src/internal/service"
 	"emc_lb/src/pkg/cache"
+	"emc_lb/src/pkg/config"
 
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -22,7 +23,7 @@ func NewCategoryModule(database *mongo.Database, redisClient *redis.Client) (*Ca
 	if err := categoryRepository.EnsureIndexes(context.Background()); err != nil {
 		return nil, err
 	}
-	categoryCacheStore := cache.NewRedisCategoryCacheStore(redisClient)
+	categoryCacheStore := cache.NewRedisCategoryCacheStore(redisClient, config.Get().Cache.CategoryTTL)
 	categoryService := service.NewCategoryService(categoryRepository, categoryCacheStore)
 	categoryHandler := handler.NewCategoryHandler(categoryService)
 	categoryRoute := route.NewCategoryRoute(categoryHandler)

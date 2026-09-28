@@ -18,6 +18,10 @@ type CouponRepository interface {
 	List(ctx context.Context) ([]entities.Coupon, error)
 	Update(ctx context.Context, id string, update map[string]any) (entities.Coupon, error)
 	IncrementUsage(ctx context.Context, code string, count int64) error
+	// ValidateAndIncrementUsage atomically validates all coupon conditions and
+	// increments usage in one FindOneAndUpdate. Returns the coupon (before increment)
+	// or mongo.ErrNoDocuments if any validation condition fails.
+	ValidateAndIncrementUsage(ctx context.Context, code string, orderAmount float64) (entities.Coupon, error)
 }
 
 type couponRepository struct {
@@ -196,4 +200,38 @@ func (r *couponRepository) IncrementUsage(ctx context.Context, code string, coun
 		return mongo.ErrNoDocuments
 	}
 	return nil
+}
+
+func (r *couponRepository) ValidateAndIncrementUsage(ctx context.Context, code string, orderAmount float64) (entities.Coupon, error) {
+	now := time.Now().UTC()
+
+	filter := bson.M{
+		"code":             code,
+		"is_deleted":       false,
+		"is_active":        true,
+		"start_date":       bson.M{"$lte": now},
+		"end_date":         bson.M{"$gte": now},
+		"min_order_amount": bson.M{"$lte": orderAmount},
+		"$or": []bson.M{
+			{"usage_limit": bson.M{"$eq": int64(0)}},
+			{"$expr": bson.M{"$lt": bson.A{"$usage_count", "$usage_limit"}}},
+		},
+	}
+
+	update := bson.M{
+		"$inc": bson.M{"usage_count": int64(1)},
+		"$set": bson.M{"updated_at": now},
+	}
+
+	var doc couponDoc
+	err := r.collection.FindOneAndUpdate(
+		ctx, filter, update,
+		options.FindOneAndUpdate().SetReturnDocument(options.Before),
+	).Decode(&doc)
+
+	if err != nil {
+		return entities.Coupon{}, err
+	}
+
+	return toCouponEntity(doc), nil
 }

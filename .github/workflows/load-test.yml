@@ -1,0 +1,48 @@
+name: "🚀 Load Testing"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  load-test:
+    name: "🚀 Run K6 Load Test"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v7
+
+      - name: "🐳 Start Docker Compose environment"
+        run: |
+          # Go to the root directory to run docker compose
+          docker compose -f docker/docker-compose.yml up -d --build
+          
+          echo "Waiting for services to become healthy..."
+          # Wait a bit for DBs and API to initialize
+          sleep 30
+          docker compose -f docker/docker-compose.yml ps
+
+      - name: "📈 Run k6 Load Test"
+        run: |
+          # Run k6 container attached to the docker-compose network
+          # so it can reach the nginx load balancer directly.
+          # The network name depends on the directory name, default in github actions is the repo name (emc_lb)
+          NETWORK_NAME=$(docker network ls | grep emc-network | awk '{print $2}' | head -n 1)
+          
+          if [ -z "$NETWORK_NAME" ]; then
+            echo "Error: Could not find emc-network"
+            docker network ls
+            exit 1
+          fi
+          
+          echo "Running k6 on network: $NETWORK_NAME"
+          
+          docker run --rm -i \
+            --network=$NETWORK_NAME \
+            -e API_URL=http://nginx:80 \
+            grafana/k6 run - < scripts/k6/load_test.js
+
+      - name: "🧹 Cleanup Docker Compose"
+        if: always()
+        run: |
+          docker compose -f docker/docker-compose.yml down -v

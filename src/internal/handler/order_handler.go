@@ -28,7 +28,7 @@ func NewOrderHandler(orderService service.OrderService) *OrderHandler {
 // @Tags         Orders
 // @Accept       json
 // @Produce      json
-// @Param        body body entities.CreateOrderRequest true "Order details with items and optional coupon"
+// @Param        body body entities.CheckoutRequest true "Order details with items and optional coupon"
 // @Success      201  {object}  res.APIResponse
 // @Failure      400  {object}  res.APIResponse
 // @Failure      401  {object}  res.APIResponse
@@ -45,13 +45,13 @@ func (h *OrderHandler) HandleCreate(ctx *gin.Context) {
 		return
 	}
 
-	var createRequest entities.CreateOrderRequest
+	var createRequest entities.CheckoutRequest
 	if err := validation.BindJSON(ctx, &createRequest, erres.CommonBadRequest); err != nil {
 		res.Error(ctx, err)
 		return
 	}
 
-	orders, err := h.orderService.CreateOrder(ctx.Request.Context(), userID.(string), createRequest)
+	orders, err := h.orderService.CreateOrderFromCheckout(ctx.Request.Context(), userID.(string), createRequest)
 	if err != nil {
 		res.Error(ctx, err)
 		return
@@ -141,7 +141,12 @@ func (h *OrderHandler) HandleGetOrder(ctx *gin.Context) {
 	// Add check to ensure the user requesting this is either the owner or an admin
 	userID, _ := ctx.Get(middleware.ContextUserIDKey)
 	role, _ := ctx.Get(middleware.ContextRoleKey)
-	if !auth.GetRBACManager().HasPermission(role.(string), "manage_orders") && order.UserID != userID.(string) {
+	userCtx := auth.UserContext{
+		UserID: userID.(string),
+		Role:   role.(string),
+	}
+
+	if !auth.CanManageOrder(userCtx, order.UserID) {
 		res.Error(ctx, &res.AppError{
 			Message:    "Forbidden: You can only view your own orders",
 			Code:       erres.CommonForbidden,
@@ -191,4 +196,53 @@ func (h *OrderHandler) HandleUpdateStatus(ctx *gin.Context) {
 	}
 
 	res.Success(ctx, http.StatusOK, map[string]string{"message": "Order status updated successfully"})
+}
+
+// HandleCancelOrder godoc
+// @Summary      Cancel order
+// @Description  Cancel a pending order (buyer only)
+// @Tags         Orders
+// @Accept       json
+// @Produce      json
+// @Param        id   path      string  true  "Order ID"
+// @Param        body body entities.CancelOrderRequest true "Cancellation reason"
+// @Success      200  {object}  res.APIResponse
+// @Failure      400  {object}  res.APIResponse
+// @Failure      401  {object}  res.APIResponse
+// @Failure      403  {object}  res.APIResponse
+// @Security     BearerAuth
+// @Router       /api/v1/orders/{id}/cancel [post]
+func (h *OrderHandler) HandleCancelOrder(ctx *gin.Context) {
+	userID, exists := ctx.Get(middleware.ContextUserIDKey)
+	if !exists {
+		res.Error(ctx, &res.AppError{
+			Message:    "Unauthorized",
+			Code:       erres.UserUnauthorized,
+			StatusCode: http.StatusUnauthorized,
+		})
+		return
+	}
+
+	id := ctx.Param("id")
+	if id == "" {
+		res.Error(ctx, &res.AppError{
+			Message:    "Invalid order ID",
+			Code:       erres.CommonBadRequest,
+			StatusCode: http.StatusBadRequest,
+		})
+		return
+	}
+
+	var req entities.CancelOrderRequest
+	if err := validation.BindJSON(ctx, &req, erres.CommonBadRequest); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	if err := h.orderService.CancelOrder(ctx.Request.Context(), userID.(string), id); err != nil {
+		res.Error(ctx, err)
+		return
+	}
+
+	res.Success(ctx, http.StatusOK, map[string]string{"message": "Order cancelled successfully"})
 }

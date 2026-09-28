@@ -2,243 +2,487 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"emc_lb/src/pkg/entities"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"emc_lb/src/internal/db/sqlc"
+	"emc_lb/src/pkg/entities"
 )
 
 type OrderRepository interface {
+	WithTx(tx pgx.Tx) OrderRepository
 	Create(context.Context, entities.Order) (entities.Order, error)
 	List(context.Context, string) ([]entities.Order, error)
 	GetByID(context.Context, string) (entities.Order, error)
 	GetByInvoiceNumber(context.Context, string) (entities.Order, error)
 	UpdateStatus(context.Context, string, string) error
-	UpdatePaymentStatus(context.Context, string, string) error
-	EnsureIndexes(context.Context) error
+	UpdateStatusAtomic(context.Context, string, string, string) error
+	ConfirmPaymentAtomic(ctx context.Context, invoiceNumber, expectedCurrentPaymentStatus, newPaymentStatus, newOrderStatus, transactionID string) (int64, error)
+	MarkInventoryReturned(ctx context.Context, id string) error
+	GetCustomerInfoByUserID(ctx context.Context, userID string) (email string, name string, err error)
+	GetExpiredPendingOrders(ctx context.Context) ([]entities.Order, error)
 }
 
 type orderRepository struct {
-	collection *mongo.Collection
+	pool *pgxpool.Pool
+	db   *sqlc.Queries
 }
 
-func NewOrderRepository(collection *mongo.Collection) OrderRepository {
-	return &orderRepository{collection: collection}
+func NewOrderRepository(pool *pgxpool.Pool, db sqlc.Querier) OrderRepository {
+	return &orderRepository{
+		pool: pool,
+		db:   db.(*sqlc.Queries),
+	}
+}
+
+func (r *orderRepository) WithTx(tx pgx.Tx) OrderRepository {
+	return &orderRepository{
+		pool: r.pool,
+		db:   r.db.WithTx(tx),
+	}
 }
 
 func (r *orderRepository) Create(ctx context.Context, order entities.Order) (entities.Order, error) {
-	doc := toOrderDoc(order)
-	result, err := r.collection.InsertOne(ctx, doc)
+	userUUID, err := uuid.Parse(order.UserID)
 	if err != nil {
 		return entities.Order{}, err
 	}
 
-	id, ok := result.InsertedID.(bson.ObjectID)
-	if ok {
-		doc.ID = id
+	params := sqlc.CreateOrderParams{
+		PaymentGroupID:  &order.PaymentGroupID,
+		ShopID:          &order.ShopID,
+		Uuid:            userUUID,
+		InvoiceNumber:   order.InvoiceNumber,
+		SubTotal:        Float64ToNumeric(order.SubTotal),
+		CouponCode:      &order.CouponCode,
+		DiscountAmount:  Float64ToNumeric(order.DiscountAmount),
+		TaxAmount:       Float64ToNumeric(order.TaxAmount),
+		TotalAmount:     Float64ToNumeric(order.TotalAmount),
+		Status:          order.Status,
+		PaymentStatus:   order.PaymentStatus,
+		PaymentMethod:   &order.PaymentMethod,
+		ShippingAddress: &order.ShippingAddress,
+		ContactPhone:    &order.ContactPhone,
 	}
 
-	return toOrderEntity(doc), nil
+	if order.ExpiresAt != nil {
+		params.ExpiresAt = *order.ExpiresAt
+	}
+
+	row, err := r.db.CreateOrder(ctx, params)
+	if err != nil {
+		return entities.Order{}, err
+	}
+
+	for _, item := range order.Items {
+		if item.Quantity > 2147483647 || item.Quantity < -2147483648 {
+			return entities.Order{}, fmt.Errorf("quantity %d overflows int32", item.Quantity)
+		}
+		sku := item.SKU
+		thumb := item.Thumbnail
+		_, err = r.db.CreateOrderItem(ctx, sqlc.CreateOrderItemParams{
+			OrderID:     row.ID,
+			ProductID:   item.ProductID,
+			ProductName: item.ProductName,
+			Sku:         &sku,
+			Thumbnail:   &thumb,
+			Quantity:    int32(item.Quantity),
+			Price:       Float64ToNumeric(item.Price),
+			SubTotal:    Float64ToNumeric(item.SubTotal),
+		})
+		if err != nil {
+			return entities.Order{}, err
+		}
+	}
+
+	// We only return the ID for now. For a full entity, we would fetch items too,
+	// but the service already has the full entity and just needs the ID.
+	order.ID = row.Uuid.String()
+	return order, nil
 }
 
 func (r *orderRepository) List(ctx context.Context, userID string) ([]entities.Order, error) {
-	filter := bson.M{"is_deleted": false}
+	var rows []sqlc.Order
+	var err error
+
 	if userID != "" {
-		filter["user_id"] = userID
+		userUUID, errParse := uuid.Parse(userID)
+		if errParse != nil {
+			return nil, errParse
+		}
+		rows, err = r.db.ListOrdersByUserID(ctx, userUUID)
+	} else {
+		rows, err = r.db.ListAllOrders(ctx)
 	}
 
-	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
-
-	cursor, err := r.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = cursor.Close(ctx) }()
 
-	orders := make([]entities.Order, 0)
-	for cursor.Next(ctx) {
-		var doc orderDoc
-		if err := cursor.Decode(&doc); err != nil {
-			return nil, err
-		}
-		orders = append(orders, toOrderEntity(doc))
+	orders := make([]entities.Order, 0, len(rows))
+	for _, row := range rows {
+		orders = append(orders, toOrderEntityFromSqlc(row, userID))
 	}
-
-	if err := cursor.Err(); err != nil {
-		return nil, err
-	}
-
 	return orders, nil
 }
 
 func (r *orderRepository) GetByID(ctx context.Context, id string) (entities.Order, error) {
-	objID, err := bson.ObjectIDFromHex(id)
+	orderUUID, err := uuid.Parse(id)
 	if err != nil {
 		return entities.Order{}, err
 	}
-	var doc orderDoc
-	err = r.collection.FindOne(ctx, bson.M{
-		"_id":        objID,
-		"is_deleted": false,
-	}).Decode(&doc)
+	row, err := r.db.GetOrderByUUID(ctx, orderUUID)
 	if err != nil {
 		return entities.Order{}, err
 	}
 
-	return toOrderEntity(doc), nil
+	items, err := r.db.GetOrderItemsByOrderID(ctx, row.ID)
+	if err != nil {
+		return entities.Order{}, err
+	}
+
+	order := toOrderEntityFromSqlcRow(row)
+	order.Items = toOrderItemsEntityFromSqlc(items)
+	return order, nil
 }
 
 func (r *orderRepository) GetByInvoiceNumber(ctx context.Context, invoiceNumber string) (entities.Order, error) {
-	var doc orderDoc
-	err := r.collection.FindOne(ctx, bson.M{
-		"invoice_number": invoiceNumber,
-		"is_deleted":     false,
-	}).Decode(&doc)
+	row, err := r.db.GetOrderByInvoiceNumber(ctx, invoiceNumber)
 	if err != nil {
 		return entities.Order{}, err
 	}
-	return toOrderEntity(doc), nil
+
+	items, err := r.db.GetOrderItemsByOrderID(ctx, row.ID)
+	if err != nil {
+		return entities.Order{}, err
+	}
+
+	order := toOrderEntityFromSqlcInvoiceRow(row)
+	order.Items = toOrderItemsEntityFromSqlc(items)
+	return order, nil
 }
 
 func (r *orderRepository) UpdateStatus(ctx context.Context, id string, status string) error {
-	objID, err := bson.ObjectIDFromHex(id)
+	orderUUID, err := uuid.Parse(id)
 	if err != nil {
 		return err
 	}
-	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{
-		"$set": bson.M{
-			"status":     status,
-			"updated_at": time.Now().UTC(),
-		},
+	return r.db.UpdateOrderStatus(ctx, sqlc.UpdateOrderStatusParams{
+		Uuid:   orderUUID,
+		Status: status,
 	})
-	return err
 }
 
-func (r *orderRepository) UpdatePaymentStatus(ctx context.Context, id string, paymentStatus string) error {
-	objID, err := bson.ObjectIDFromHex(id)
+func (r *orderRepository) UpdateStatusAtomic(ctx context.Context, id string, expectedCurrent string, newStatus string) error {
+	orderUUID, err := uuid.Parse(id)
 	if err != nil {
 		return err
 	}
-	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{
-		"$set": bson.M{
-			"payment_status": paymentStatus,
-			"updated_at":     time.Now().UTC(),
-		},
+	rowsAffected, err := r.db.UpdateOrderStatusAtomic(ctx, sqlc.UpdateOrderStatusAtomicParams{
+		Uuid:     orderUUID,
+		Status:   expectedCurrent,
+		Status_2: newStatus,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return pgx.ErrNoRows // Using pgx error for "no documents" equivalent
+	}
+	return nil
 }
 
-func (r *orderRepository) EnsureIndexes(ctx context.Context) error {
-	_, err := r.collection.Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "invoice_number", Value: 1}},
-		Options: options.Index().SetUnique(true),
+func (r *orderRepository) ConfirmPaymentAtomic(ctx context.Context, invoiceNumber, expectedCurrentPaymentStatus, newPaymentStatus, newOrderStatus, transactionID string) (int64, error) {
+	return r.db.ConfirmPaymentAtomic(ctx, sqlc.ConfirmPaymentAtomicParams{
+		InvoiceNumber:        invoiceNumber,
+		PaymentStatus:        newPaymentStatus,
+		Status:               newOrderStatus,
+		PaymentTransactionID: &transactionID,
 	})
-	return err
 }
 
-// ============================================================================
-// Database Models & Mappers
-// ============================================================================
-
-type orderDoc struct {
-	ID              bson.ObjectID  `bson:"_id,omitempty"`
-	PaymentGroupID  string         `bson:"payment_group_id,omitempty"`
-	ShopID          string         `bson:"shop_id,omitempty"`
-	UserID          string         `bson:"user_id"`
-	InvoiceNumber   string         `bson:"invoice_number"`
-	Items           []orderItemDoc `bson:"items"`
-	SubTotal        float64        `bson:"sub_total"`
-	CouponCode      string         `bson:"coupon_code,omitempty"`
-	DiscountAmount  float64        `bson:"discount_amount"`
-	TaxAmount       float64        `bson:"tax_amount"`
-	TotalAmount     float64        `bson:"total_amount"`
-	Status          string         `bson:"status"`
-	PaymentStatus   string         `bson:"payment_status"`
-	PaymentMethod   string         `bson:"payment_method"`
-	ShippingAddress string         `bson:"shipping_address"`
-	ContactPhone    string         `bson:"contact_phone"`
-	IsDeleted       bool           `bson:"is_deleted"`
-	CreatedAt       time.Time      `bson:"created_at"`
-	UpdatedAt       time.Time      `bson:"updated_at"`
-}
-
-type orderItemDoc struct {
-	ProductID string  `bson:"product_id"`
-	Quantity  int64   `bson:"quantity"`
-	Price     float64 `bson:"price"`
-}
-
-func toOrderDoc(o entities.Order) orderDoc {
-	doc := orderDoc{
-		PaymentGroupID:  o.PaymentGroupID,
-		ShopID:          o.ShopID,
-		UserID:          o.UserID,
-		InvoiceNumber:   o.InvoiceNumber,
-		SubTotal:        o.SubTotal,
-		CouponCode:      o.CouponCode,
-		DiscountAmount:  o.DiscountAmount,
-		TaxAmount:       o.TaxAmount,
-		TotalAmount:     o.TotalAmount,
-		Status:          o.Status,
-		PaymentStatus:   o.PaymentStatus,
-		PaymentMethod:   o.PaymentMethod,
-		ShippingAddress: o.ShippingAddress,
-		ContactPhone:    o.ContactPhone,
-		IsDeleted:       o.IsDeleted,
-		CreatedAt:       o.CreatedAt,
-		UpdatedAt:       o.UpdatedAt,
+func (r *orderRepository) MarkInventoryReturned(ctx context.Context, id string) error {
+	orderUUID, err := uuid.Parse(id)
+	if err != nil {
+		return err
 	}
-	if o.ID != "" {
-		if objID, err := bson.ObjectIDFromHex(o.ID); err == nil {
-			doc.ID = objID
+	rowsAffected, err := r.db.MarkInventoryReturned(ctx, orderUUID)
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return pgx.ErrNoRows // Either already marked or not found
+	}
+	return nil
+}
+
+func (r *orderRepository) GetCustomerInfoByUserID(ctx context.Context, userID string) (string, string, error) {
+	uUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return "", "", err
+	}
+	// We can use the existing GetUserByUUID and GetUserProfileByUUID from sqlc
+	user, err := r.db.GetUserByUUID(ctx, uUUID)
+	if err != nil {
+		return "", "", err
+	}
+	profile, err := r.db.GetUserProfileByUUID(ctx, uUUID)
+	var name string
+	if err == nil {
+		if profile.FullName != nil && *profile.FullName != "" {
+			name = *profile.FullName
+		} else if profile.UserName != nil {
+			name = *profile.UserName
 		}
 	}
-
-	items := make([]orderItemDoc, len(o.Items))
-	for i, item := range o.Items {
-		items[i] = orderItemDoc{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			Price:     item.Price,
-		}
-	}
-	doc.Items = items
-
-	return doc
+	return user.Email, name, nil
 }
 
-func toOrderEntity(doc orderDoc) entities.Order {
-	items := make([]entities.OrderItem, len(doc.Items))
-	for i, item := range doc.Items {
-		items[i] = entities.OrderItem{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			Price:     item.Price,
-		}
+func (r *orderRepository) GetExpiredPendingOrders(ctx context.Context) ([]entities.Order, error) {
+	rows, err := r.db.GetExpiredPendingOrders(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	orders := make([]entities.Order, 0, len(rows))
+	for _, row := range rows {
+		orders = append(orders, toOrderEntityFromSqlc(row, "")) // User ID not mapped in this simple sweep query, but we only need order ID anyway
+	}
+	return orders, nil
+}
+
+// Helpers
+func toOrderEntityFromSqlc(row sqlc.Order, userID string) entities.Order {
+	var shopID, paymentGroupID, couponCode, paymentMethod, shipping, phone, txID string
+	if row.ShopID != nil {
+		shopID = *row.ShopID
+	}
+	if row.PaymentGroupID != nil {
+		paymentGroupID = *row.PaymentGroupID
+	}
+	if row.CouponCode != nil {
+		couponCode = *row.CouponCode
+	}
+	if row.PaymentMethod != nil {
+		paymentMethod = *row.PaymentMethod
+	}
+	if row.ShippingAddress != nil {
+		shipping = *row.ShippingAddress
+	}
+	if row.ContactPhone != nil {
+		phone = *row.ContactPhone
+	}
+	if row.PaymentTransactionID != nil {
+		txID = *row.PaymentTransactionID
+	}
+
+	var txIDPtr *string
+	if txID != "" {
+		txIDPtr = &txID
+	}
+
+	subTotal, _ := row.SubTotal.Float64Value()
+	discount, _ := row.DiscountAmount.Float64Value()
+	tax, _ := row.TaxAmount.Float64Value()
+	total, _ := row.TotalAmount.Float64Value()
+
+	var expiresAt *time.Time
+	if !row.ExpiresAt.IsZero() {
+		t := row.ExpiresAt
+		expiresAt = &t
 	}
 
 	return entities.Order{
-		ID:              doc.ID.Hex(),
-		PaymentGroupID:  doc.PaymentGroupID,
-		ShopID:          doc.ShopID,
-		UserID:          doc.UserID,
-		InvoiceNumber:   doc.InvoiceNumber,
-		Items:           items,
-		SubTotal:        doc.SubTotal,
-		CouponCode:      doc.CouponCode,
-		DiscountAmount:  doc.DiscountAmount,
-		TaxAmount:       doc.TaxAmount,
-		TotalAmount:     doc.TotalAmount,
-		Status:          doc.Status,
-		PaymentStatus:   doc.PaymentStatus,
-		PaymentMethod:   doc.PaymentMethod,
-		ShippingAddress: doc.ShippingAddress,
-		ContactPhone:    doc.ContactPhone,
-		IsDeleted:       doc.IsDeleted,
-		CreatedAt:       doc.CreatedAt,
-		UpdatedAt:       doc.UpdatedAt,
+		ID:                   row.Uuid.String(),
+		PaymentGroupID:       paymentGroupID,
+		ShopID:               shopID,
+		UserID:               userID,
+		InvoiceNumber:        row.InvoiceNumber,
+		SubTotal:             subTotal.Float64,
+		CouponCode:           couponCode,
+		DiscountAmount:       discount.Float64,
+		TaxAmount:            tax.Float64,
+		TotalAmount:          total.Float64,
+		Status:               row.Status,
+		PaymentStatus:        row.PaymentStatus,
+		PaymentMethod:        paymentMethod,
+		PaymentTransactionID: txIDPtr,
+		ShippingAddress:      shipping,
+		ContactPhone:         phone,
+		IsDeleted:            row.IsDeleted,
+		InventoryReturned:    row.InventoryReturned,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+		ExpiresAt:            expiresAt,
 	}
+}
+
+func toOrderEntityFromSqlcRow(row sqlc.GetOrderByUUIDRow) entities.Order {
+	var shopID, paymentGroupID, couponCode, paymentMethod, shipping, phone, txID string
+	if row.ShopID != nil {
+		shopID = *row.ShopID
+	}
+	if row.PaymentGroupID != nil {
+		paymentGroupID = *row.PaymentGroupID
+	}
+	if row.CouponCode != nil {
+		couponCode = *row.CouponCode
+	}
+	if row.PaymentMethod != nil {
+		paymentMethod = *row.PaymentMethod
+	}
+	if row.ShippingAddress != nil {
+		shipping = *row.ShippingAddress
+	}
+	if row.ContactPhone != nil {
+		phone = *row.ContactPhone
+	}
+	if row.PaymentTransactionID != nil {
+		txID = *row.PaymentTransactionID
+	}
+
+	var txIDPtr *string
+	if txID != "" {
+		txIDPtr = &txID
+	}
+
+	subTotal, _ := row.SubTotal.Float64Value()
+	discount, _ := row.DiscountAmount.Float64Value()
+	tax, _ := row.TaxAmount.Float64Value()
+	total, _ := row.TotalAmount.Float64Value()
+
+	var expiresAt *time.Time
+	if !row.ExpiresAt.IsZero() {
+		t := row.ExpiresAt
+		expiresAt = &t
+	}
+
+	return entities.Order{
+		ID:                   row.Uuid.String(),
+		PaymentGroupID:       paymentGroupID,
+		ShopID:               shopID,
+		UserID:               row.UserUuid.String(),
+		InvoiceNumber:        row.InvoiceNumber,
+		SubTotal:             subTotal.Float64,
+		CouponCode:           couponCode,
+		DiscountAmount:       discount.Float64,
+		TaxAmount:            tax.Float64,
+		TotalAmount:          total.Float64,
+		Status:               row.Status,
+		PaymentStatus:        row.PaymentStatus,
+		PaymentMethod:        paymentMethod,
+		PaymentTransactionID: txIDPtr,
+		ShippingAddress:      shipping,
+		ContactPhone:         phone,
+		IsDeleted:            row.IsDeleted,
+		InventoryReturned:    row.InventoryReturned,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+		ExpiresAt:            expiresAt,
+	}
+}
+
+func toOrderEntityFromSqlcInvoiceRow(row sqlc.GetOrderByInvoiceNumberRow) entities.Order {
+	var shopID, paymentGroupID, couponCode, paymentMethod, shipping, phone, txID string
+	if row.ShopID != nil {
+		shopID = *row.ShopID
+	}
+	if row.PaymentGroupID != nil {
+		paymentGroupID = *row.PaymentGroupID
+	}
+	if row.CouponCode != nil {
+		couponCode = *row.CouponCode
+	}
+	if row.PaymentMethod != nil {
+		paymentMethod = *row.PaymentMethod
+	}
+	if row.ShippingAddress != nil {
+		shipping = *row.ShippingAddress
+	}
+	if row.ContactPhone != nil {
+		phone = *row.ContactPhone
+	}
+	if row.PaymentTransactionID != nil {
+		txID = *row.PaymentTransactionID
+	}
+
+	var txIDPtr *string
+	if txID != "" {
+		txIDPtr = &txID
+	}
+
+	subTotal, _ := row.SubTotal.Float64Value()
+	discount, _ := row.DiscountAmount.Float64Value()
+	tax, _ := row.TaxAmount.Float64Value()
+	total, _ := row.TotalAmount.Float64Value()
+
+	var expiresAt *time.Time
+	if !row.ExpiresAt.IsZero() {
+		t := row.ExpiresAt
+		expiresAt = &t
+	}
+
+	return entities.Order{
+		ID:                   row.Uuid.String(),
+		PaymentGroupID:       paymentGroupID,
+		ShopID:               shopID,
+		UserID:               row.UserUuid.String(),
+		InvoiceNumber:        row.InvoiceNumber,
+		SubTotal:             subTotal.Float64,
+		CouponCode:           couponCode,
+		DiscountAmount:       discount.Float64,
+		TaxAmount:            tax.Float64,
+		TotalAmount:          total.Float64,
+		Status:               row.Status,
+		PaymentStatus:        row.PaymentStatus,
+		PaymentMethod:        paymentMethod,
+		PaymentTransactionID: txIDPtr,
+		ShippingAddress:      shipping,
+		ContactPhone:         phone,
+		IsDeleted:            row.IsDeleted,
+		InventoryReturned:    row.InventoryReturned,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+		ExpiresAt:            expiresAt,
+	}
+}
+
+func toOrderItemsEntityFromSqlc(items []sqlc.OrderItem) []entities.OrderItem {
+	result := make([]entities.OrderItem, 0, len(items))
+	for _, item := range items {
+		var sku, thumb string
+		if item.Sku != nil {
+			sku = *item.Sku
+		}
+		if item.Thumbnail != nil {
+			thumb = *item.Thumbnail
+		}
+
+		price, _ := item.Price.Float64Value()
+		subTotal, _ := item.SubTotal.Float64Value()
+
+		result = append(result, entities.OrderItem{
+			ProductID:   item.ProductID,
+			ProductName: item.ProductName,
+			SKU:         sku,
+			Thumbnail:   thumb,
+			Quantity:    int64(item.Quantity),
+			Price:       price.Float64,
+			SubTotal:    subTotal.Float64,
+		})
+	}
+	return result
+}
+
+func Float64ToNumeric(f float64) pgtype.Numeric {
+	var num pgtype.Numeric
+	_ = num.Scan(f) // Can also use num.Int/Exp logic or pgtype.Numeric{} init but Scan works for float64/string in pgtype v5 if DB returns it. Wait, actually pgtype.Numeric has `ScanFloat64` or we can convert string to numeric.
+	// Actually for pgtype.Numeric, setting from float is:
+	_ = num.Scan(fmt.Sprintf("%f", f))
+	return num
 }

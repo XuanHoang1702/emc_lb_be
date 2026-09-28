@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"emc_lb/src/pkg/config"
@@ -29,7 +30,7 @@ func NewRedisClientFromConfig(cfg *config.RedisSettings) (*redis.Client, error) 
 
 	if err := client.Ping(pingCtx).Err(); err != nil {
 		_ = client.Close()
-		return nil, err
+		return nil, fmt.Errorf("ping redis %s: %w", cfg.Addr(), err)
 	}
 
 	return client, nil

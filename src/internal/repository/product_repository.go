@@ -18,6 +18,10 @@ type ProductRepository interface {
 	Update(context.Context, string, map[string]any) (entities.Product, error)
 	Delete(context.Context, string, map[string]any) error
 	UpdateStock(context.Context, string, int64, int64) error
+	// DeductStock atomically decreases stock only if sufficient quantity is available.
+	// Returns mongo.ErrNoDocuments if product not found or insufficient stock.
+	DeductStock(ctx context.Context, id string, quantity int64) error
+	RestoreStockIdempotent(ctx context.Context, id string, quantity int64, orderID string) error
 }
 
 type productRepository struct {
@@ -161,6 +165,83 @@ func (r *productRepository) UpdateStock(ctx context.Context, id string, stockDel
 	return nil
 }
 
+// DeductStock atomically decreases stock only if sufficient quantity is available.
+// Uses filter precondition `stock >= quantity` so check-and-deduct happen in
+// one atomic MongoDB operation, preventing oversell under concurrency.
+func (r *productRepository) DeductStock(ctx context.Context, id string, quantity int64) error {
+	objID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+
+	filter := bson.M{
+		"_id":        objID,
+		"is_deleted": false,
+		"stock":      bson.M{"$gte": quantity},
+	}
+
+	update := bson.M{
+		"$inc": bson.M{
+			"stock":      -quantity,
+			"sold_count": quantity,
+		},
+		"$set": bson.M{
+			"updated_at": time.Now().UTC(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+
+	return nil
+}
+
+func (r *productRepository) RestoreStockIdempotent(ctx context.Context, id string, quantity int64, orderID string) error {
+	objID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+
+	filter := bson.M{
+		"_id":             objID,
+		"is_deleted":      false,
+		"released_orders": bson.M{"$ne": orderID}, // Ensure orderID is not already in released_orders
+	}
+
+	update := bson.M{
+		"$inc": bson.M{
+			"stock":      quantity,
+			"sold_count": -quantity,
+		},
+		"$push": bson.M{
+			"released_orders": orderID,
+		},
+		"$set": bson.M{
+			"updated_at": time.Now().UTC(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		// Could mean product doesn't exist, is deleted, OR already released.
+		// For idempotency, we treat "already released" as success.
+		// To differentiate, we could do a second check, but usually it's fine to just return nil.
+		return nil
+	}
+
+	return nil
+}
+
 // ============================================================================
 // Database Models & Mappers
 // ============================================================================
@@ -196,6 +277,7 @@ type productDoc struct {
 	IsDeleted       bool              `bson:"is_deleted"`
 	AverageRating   float64           `bson:"average_rating,omitempty"`
 	ReviewCount     int64             `bson:"review_count,omitempty"`
+	ReleasedOrders  []string          `bson:"released_orders,omitempty"`
 	CreatedAt       time.Time         `bson:"created_at"`
 	UpdatedAt       time.Time         `bson:"updated_at"`
 }

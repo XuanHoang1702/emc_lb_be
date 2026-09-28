@@ -69,6 +69,18 @@ func RegisterCustomValidation(v *validator.Validate) {
 		return slugRegex.MatchString(fl.Field().String())
 	})
 
+	_ = v.RegisterValidation("regex", func(fl validator.FieldLevel) bool {
+		regexStr := fl.Param()
+		if regexStr == "" {
+			return false
+		}
+		compiledRegex, err := regexp.Compile(regexStr)
+		if err != nil {
+			return false
+		}
+		return compiledRegex.MatchString(fl.Field().String())
+	})
+
 	var searchRegex = regexp.MustCompile(`^[a-zA-Z0-9\s]+$`)
 	_ = v.RegisterValidation("search", func(fl validator.FieldLevel) bool {
 		return searchRegex.MatchString(fl.Field().String())

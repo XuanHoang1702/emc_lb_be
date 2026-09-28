@@ -1,5 +1,6 @@
 // Package migrate provides auto-migration support using golang-migrate.
-// It applies pending SQL migrations from a directory to the target database.
+// It applies pending SQL migrations (embedded in the binary) to the target
+// database.
 package migrate
 
 import (
@@ -9,11 +10,15 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres" // postgres driver
-	_ "github.com/golang-migrate/migrate/v4/source/file"       // file source driver
+	iofs "github.com/golang-migrate/migrate/v4/source/iofs"    // embedded FS source driver
+
+	"emc_lb/src/internal/db/migrations"
 )
 
-// Run applies all pending migrations from migrationsDir to the database
-// at databaseURL.
+// Run applies all pending migrations to the database at databaseURL.
+//
+// Migrations are embedded at build time, so no on-disk migration directory is
+// required at runtime (important for distroless container images).
 //
 // Behaviour:
 //   - If there are no pending migrations, it returns nil (idempotent).
@@ -22,10 +27,13 @@ import (
 //   - Migration errors are wrapped with context.
 //
 // Call this once during application startup, before opening the query layer.
-func Run(databaseURL, migrationsDir string) error {
-	sourceURL := fmt.Sprintf("file://%s", migrationsDir)
+func Run(databaseURL string) error {
+	source, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		return fmt.Errorf("migrate: init source: %w", err)
+	}
 
-	m, err := migrate.New(sourceURL, databaseURL)
+	m, err := migrate.NewWithSourceInstance("iofs", source, databaseURL)
 	if err != nil {
 		return fmt.Errorf("migrate: init: %w", err)
 	}
@@ -61,23 +69,6 @@ func Run(databaseURL, migrationsDir string) error {
 	slog.Info("migrate: applied successfully", "version", version)
 
 	return nil
-}
-
-// Version returns the current applied migration version and whether the
-// database is in a dirty (incomplete) migration state.
-func Version(databaseURL, migrationsDir string) (uint, bool, error) {
-	sourceURL := fmt.Sprintf("file://%s", migrationsDir)
-
-	m, err := migrate.New(sourceURL, databaseURL)
-	if err != nil {
-		return 0, false, fmt.Errorf("migrate: init: %w", err)
-	}
-
-	defer func() {
-		_, _ = m.Close()
-	}()
-
-	return m.Version()
 }
 
 func isDirty(err error) bool {
