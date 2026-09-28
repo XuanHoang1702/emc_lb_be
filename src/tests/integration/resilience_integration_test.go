@@ -3,6 +3,7 @@ package integration_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -13,31 +14,43 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
-	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 func setupInfra(t *testing.T) (*pgxpool.Pool, *mongo.Database, *redis.Client, func()) {
 	// 1. PostgreSQL
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	pgUrl := "postgres://emc_admin:EmcLb%40Postgres2026!@postgres:5432/emc_lb?sslmode=disable"
+	pgHost := os.Getenv("POSTGRES_HOST")
+	if pgHost == "" {
+		pgHost = "postgres"
+	}
+	pgUrl := "postgres://emc_admin:EmcLb%40Postgres2026!@" + pgHost + ":5432/emc_lb?sslmode=disable"
 	pgPool, err := pgxpool.New(ctx, pgUrl)
 	if err != nil {
 		t.Fatalf("Failed to connect to Postgres: %v", err)
 	}
 
 	// 2. MongoDB
-	mongoClient, err := mongo.Connect(options.Client().ApplyURI("mongodb://emc_mongo_admin:EmcLb%40Mongo2026!@mongo:27017/?authSource=admin&directConnection=true"))
+	mongoHost := os.Getenv("MONGO_HOST")
+	if mongoHost == "" {
+		mongoHost = "mongo"
+	}
+	mongoClient, err := mongo.Connect(options.Client().ApplyURI("mongodb://emc_mongo_admin:EmcLb%40Mongo2026!@" + mongoHost + ":27017/?authSource=admin&directConnection=true"))
 	if err != nil {
 		t.Fatalf("Failed to connect to MongoDB: %v", err)
 	}
 	mongoDB := mongoClient.Database("emc_lb")
 
 	// 3. Redis
+	redisHost := os.Getenv("REDIS_HOST")
+	if redisHost == "" {
+		redisHost = "redis"
+	}
 	rdb := redis.NewClient(&redis.Options{
-		Addr:        "redis:6379",
+		Addr:        redisHost + ":6379",
 		Password:    "EmcLb@Redis2026!",
 		DialTimeout: 2 * time.Second,
 	})
@@ -69,13 +82,13 @@ func TestOrderCreation_PostgresFailureRollback(t *testing.T) {
 	objID, _ := bson.ObjectIDFromHex(prodID)
 	mongoDB.Collection("products").DeleteOne(ctx, bson.M{"_id": objID})
 	_, err := mongoDB.Collection("products").InsertOne(ctx, bson.M{
-		"_id": objID,
-		"name": "Resilience Test Product",
-		"price": 100,
-		"stock": 10,
-		"shop_id": "shop-1",
-		"status": "active",
-		"is_deleted": false,
+		"_id":             objID,
+		"name":            "Resilience Test Product",
+		"price":           100,
+		"stock":           10,
+		"shop_id":         "shop-1",
+		"status":          "active",
+		"is_deleted":      false,
 		"allow_backorder": false,
 	})
 	assert.NoError(t, err)
@@ -84,13 +97,13 @@ func TestOrderCreation_PostgresFailureRollback(t *testing.T) {
 	rdb.Del(ctx, "inventory:"+prodID)
 	rdb.Set(ctx, "inventory:"+prodID, 10, 0)
 
-	// We need to simulate a Postgres failure. The easiest way without mocking pgx is 
-	// to use a context that gets cancelled right before Commit. 
+	// We need to simulate a Postgres failure. The easiest way without mocking pgx is
+	// to use a context that gets cancelled right before Commit.
 	// However, we can't easily cancel it exactly at commit without modifying source code.
 	// Alternative: we use a user UUID that violates a foreign key (e.g. non-existent user)!
-	// The DB query `INSERT INTO orders ... (SELECT id FROM users WHERE users.uuid = $3)` 
+	// The DB query `INSERT INTO orders ... (SELECT id FROM users WHERE users.uuid = $3)`
 	// If the user doesn't exist, `user_id` will be NULL, violating NOT NULL constraint!
-	
+
 	// Let's create an order with a non-existent user UUID.
 	fakeUserUUID := "00000000-0000-0000-0000-000000000000"
 
@@ -101,7 +114,7 @@ func TestOrderCreation_PostgresFailureRollback(t *testing.T) {
 	}
 
 	_, err = orderSvc.CreateOrder(ctx, fakeUserUUID, req)
-	
+
 	// EXPECTED: Error due to Postgres failure
 	assert.Error(t, err)
 	fmt.Printf("CreateOrder failed as expected: %v\n", err)
@@ -115,7 +128,7 @@ func TestOrderCreation_PostgresFailureRollback(t *testing.T) {
 	// Mongo stock should be restored to 10
 	var prod bson.M
 	mongoDB.Collection("products").FindOne(ctx, bson.M{"_id": objID}).Decode(&prod)
-	
+
 	// BSON decode might return int32, int64 or int depending on the architecture and driver
 	stockVal := fmt.Sprintf("%v", prod["stock"])
 	assert.Equal(t, "10", stockVal, "Mongo stock should be rolled back to 10")
@@ -135,10 +148,10 @@ func TestTTLSweep_Concurrency(t *testing.T) {
 	// 1. Create a fake pending order that is expired
 	orderUUID := "550e8400-e29b-41d4-a716-446655440000"
 	invoice := "INV-TTL-TEST"
-	
+
 	// Delete if exists
 	pgPool.Exec(ctx, "DELETE FROM orders WHERE uuid = $1", orderUUID)
-	
+
 	// Create dummy user to satisfy FK and NOT NULL
 	userID := 9999
 	pgPool.Exec(ctx, "DELETE FROM users WHERE id = $1", userID)
@@ -148,7 +161,7 @@ func TestTTLSweep_Concurrency(t *testing.T) {
 		INSERT INTO orders (uuid, user_id, invoice_number, total_amount, status, payment_status, expires_at, created_at, updated_at)
 		VALUES ($1, $2, $3, 100, 'pending', 'unpaid', NOW() - INTERVAL '1 hour', NOW(), NOW())
 	`, orderUUID, userID, invoice)
-	
+
 	if err != nil {
 		t.Skipf("Cannot insert test order (likely FK user_id constraint): %v", err)
 	}
@@ -181,11 +194,11 @@ func TestPaymentWebhook_Duplicate(t *testing.T) {
 	orderSvc := orderMod.Service()
 
 	ctx := context.Background()
-	
+
 	// Create order
 	orderUUID := "660e8400-e29b-41d4-a716-446655440001"
 	invoice := "INV-PAY-TEST-1"
-	
+
 	userID := 9999
 	pgPool.Exec(ctx, "INSERT INTO users (id, uuid, email, password_hash, created_at, updated_at) VALUES ($1, $2, 'test@example.com', 'hash', NOW(), NOW()) ON CONFLICT DO NOTHING", userID, orderUUID)
 	pgPool.Exec(ctx, "DELETE FROM orders WHERE uuid = $1", orderUUID)

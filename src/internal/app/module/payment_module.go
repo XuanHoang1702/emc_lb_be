@@ -14,7 +14,7 @@ type PaymentModule struct {
 func NewPaymentModule(cfg *config.AppConfig, orderService service.OrderService) *PaymentModule {
 	paymentService := service.NewPaymentService(cfg, orderService)
 	paymentHandler := handler.NewPaymentHandler(paymentService)
-	paymentRoute := route.NewPaymentRoute(paymentHandler)
+	paymentRoute := route.NewPaymentRoute(paymentHandler, cfg)
 
 	return &PaymentModule{
 		routes: paymentRoute,

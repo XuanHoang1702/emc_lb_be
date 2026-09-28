@@ -5,6 +5,7 @@ import (
 
 	"emc_lb/src/internal/handler"
 	"emc_lb/src/internal/middleware"
+	"emc_lb/src/pkg/config"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -13,10 +14,11 @@ import (
 type PaymentRoute struct {
 	paymentHandler *handler.PaymentHandler
 	redisClient    *redis.Client
+	cfg            *config.AppConfig
 }
 
-func NewPaymentRoute(paymentHandler *handler.PaymentHandler) *PaymentRoute {
-	return &PaymentRoute{paymentHandler: paymentHandler}
+func NewPaymentRoute(paymentHandler *handler.PaymentHandler, cfg *config.AppConfig) *PaymentRoute {
+	return &PaymentRoute{paymentHandler: paymentHandler, cfg: cfg}
 }
 
 func (r *PaymentRoute) SetRedisClient(client *redis.Client) {
@@ -39,7 +41,7 @@ func (r *PaymentRoute) RegisterPublic(router gin.IRouter) {
 	}
 
 	// Test endpoint: Generates a clickable link/redirect for testing the payment gateway in browser
-	if gin.Mode() != gin.ReleaseMode {
+	if gin.Mode() != gin.ReleaseMode && r.cfg.Payment.SepayEnv != "production" {
 		paymentGroup.GET("/test-checkout", r.paymentHandler.HandleTestCheckoutLink)
 	}
 
